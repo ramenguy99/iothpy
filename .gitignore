@@ -1,0 +1,8 @@
+.eggs/
+_skbuild/
+dist/
+pycoxnet.egg-info/
+__pycache__/
+MANIFEST
+notes.txt
+
