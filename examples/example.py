@@ -2,6 +2,9 @@
 
 import pycoxnet
 
-print(pycoxnet.test())
-print(pycoxnet.test2())
+s = pycoxnet.stack()
+
+print("repr " + repr(s))
+print("str " + str(s))
+print("getstack " + hex(s.getstack()))
 
