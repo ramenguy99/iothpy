@@ -121,10 +121,124 @@ stack_getstack(stack_object* self)
     return PyLong_FromVoidPtr(self->stack);
 }
 
+static PyObject*
+stack_if_nameindex(stack_object* self)
+{
+    /* nlinline missing support for if_nameindex */
+#if 1
+    PyErr_SetNone(PyExc_NotImplementedError);
+    return NULL;
+#else
+    if(!self->stack) 
+    {
+        PyErr_SetString(PyExc_Exception, "Uninitialized stack");
+        return NULL;
+    }
+
+    PyObject* list = PyList_New(0);
+    if(!list) 
+        return NULL;
+
+
+    struct picox_if_nameindex *ni = picox_if_nameindex(self->stack);
+    if(!ni) {
+        Py_DECREF(list);
+        PyErr_SetString(PyExc_Exception, "Unable to retrieve interfaces");
+        return NULL;
+    }
+
+    for (int i = 0; ni[i].if_index != 0 && i < INT_MAX; i++)
+    {
+        PyObject *ni_tuple = Py_BuildValue("IO&", 
+            ni[i].if_index, PyUnicode_DecodeFSDefault, ni[i].if_name);
+        if(!ni_tuple || PyList_Append(list, ni_tuple) == -1) {
+            Py_XDECREF(ni_tuple);
+            Py_DECREF(list);
+            picox_if_freenameindex(self->stack, ni);
+            return NULL;
+        }
+        Py_DECREF(ni_tuple);
+    }
+
+    picox_if_freenameindex(self->stack, ni);
+
+    return list;
+#endif
+}
+
+static PyObject*
+stack_if_nametoindex(stack_object* self, PyObject* args)
+{
+    if(!self->stack) 
+    {
+        PyErr_SetString(PyExc_Exception, "Uninitialized stack");
+        return NULL;
+    }
+
+    PyObject* oname;
+    if(!PyArg_ParseTuple(args, "O&:if_nametoindex", PyUnicode_FSConverter, &oname))
+        return NULL;
+
+    unsigned long index = picox_if_nametoindex(self->stack, PyBytes_AS_STRING(oname));
+    Py_DECREF(oname);
+
+    // TODO: nlinline returns -1 on error instead of 0 (not in line with the man pages)
+    if(index == -1) {
+        PyErr_SetString(PyExc_Exception, "no interface with this name");
+        return NULL;
+    }
+
+    return PyLong_FromUnsignedLong(index);
+}
+
+static PyObject*
+stack_if_indextoname(stack_object* self, PyObject* arg)
+{
+    /* nlinline missing support for if_indextoname */
+#if 1
+    PyErr_SetNone(PyExc_NotImplementedError);
+    return NULL;
+#else
+    if(!self->stack) 
+    {
+        PyErr_SetString(PyExc_Exception, "Uninitialized stack");
+        return NULL;
+    }
+
+    unsigned long index = PyLong_AsUnsignedLong(arg);
+    if(PyErr_Occurred())
+        return NULL;
+    
+    char name[IF_NAMESIZE + 1];
+    if(picox_indextoname(self->stack, index, name) == NULL)
+    {
+        PyErr_SetString(PyExc_Exception, "no interface with this index");
+        return NULL;
+    }
+
+    return PyUnicode_DecodeFSDefault(name);
+#endif
+}
+
 PyDoc_STRVAR(getstack_doc, "Test doc for getstack");
+
+PyDoc_STRVAR(if_nameindex_doc, "if_nameindex()\n\
+\n\
+Returns a list of network interface information (index, name) tuples.");
+
+PyDoc_STRVAR(if_nametoindex_doc, "if_nametoindex(if_name)\n\
+\n\
+Returns the interface index corresponding to the interface name if_name.");
+
+PyDoc_STRVAR(if_indextoname_doc, "if_indextoname(if_index)\n\
+\n\
+Returns the interface name corresponding to the interface index if_index.");
 
 static PyMethodDef stack_methods[] = {
     {"getstack", (PyCFunction)stack_getstack, METH_NOARGS, getstack_doc},
+    {"if_nameindex", (PyCFunction)stack_if_nameindex, METH_NOARGS, if_nameindex_doc},
+    {"if_nametoindex", (PyCFunction)stack_if_nametoindex, METH_VARARGS, if_nametoindex_doc},
+    {"if_indextoname", (PyCFunction)stack_if_indextoname, METH_O, if_indextoname_doc},
 
     {NULL, NULL} /* sentinel */
 };
