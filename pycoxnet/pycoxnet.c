@@ -115,11 +115,19 @@ stack_initobj(PyObject* self, PyObject* args, PyObject* kwds)
     return 0;
 }
 
+
+PyDoc_STRVAR(getstack_doc, "Test doc for getstack");
+
 static PyObject* 
 stack_getstack(stack_object* self)
 {
     return PyLong_FromVoidPtr(self->stack);
 }
+
+
+PyDoc_STRVAR(if_nameindex_doc, "if_nameindex()\n\
+\n\
+Returns a list of network interface information (index, name) tuples.");
 
 static PyObject*
 stack_if_nameindex(stack_object* self)
@@ -166,6 +174,11 @@ stack_if_nameindex(stack_object* self)
 #endif
 }
 
+
+PyDoc_STRVAR(if_nametoindex_doc, "if_nametoindex(if_name)\n\
+\n\
+Returns the interface index corresponding to the interface name if_name.");
+
 static PyObject*
 stack_if_nametoindex(stack_object* self, PyObject* args)
 {
@@ -190,6 +203,11 @@ stack_if_nametoindex(stack_object* self, PyObject* args)
 
     return PyLong_FromUnsignedLong(index);
 }
+
+
+PyDoc_STRVAR(if_indextoname_doc, "if_indextoname(if_index)\n\
+\n\
+Returns the interface name corresponding to the interface index if_index.");
 
 static PyObject*
 stack_if_indextoname(stack_object* self, PyObject* arg)
@@ -220,25 +238,70 @@ stack_if_indextoname(stack_object* self, PyObject* arg)
 #endif
 }
 
-PyDoc_STRVAR(getstack_doc, "Test doc for getstack");
 
-PyDoc_STRVAR(if_nameindex_doc, "if_nameindex()\n\
+PyDoc_STRVAR(ipaddr_add_doc, "ipaddr_add(family, addr, prefix_len, if_index)\n\
 \n\
-Returns a list of network interface information (index, name) tuples.");
+Add an IP address to the interface if_index.\n\
+Supports IPv4 (family == AF_INET) and IPv6 (family == AF_INET6)");
 
-PyDoc_STRVAR(if_nametoindex_doc, "if_nametoindex(if_name)\n\
-\n\
-Returns the interface index corresponding to the interface name if_name.");
+static PyObject*
+stack_ipaddr_add(stack_object* self, PyObject* args)
+{
+    int af;
+    Py_buffer packed_ip;
+    int prefix_len;
+    int if_index;
 
-PyDoc_STRVAR(if_indextoname_doc, "if_indextoname(if_index)\n\
-\n\
-Returns the interface name corresponding to the interface index if_index.");
+    if(!self->stack) 
+    {
+        PyErr_SetString(PyExc_Exception, "Uninitialized stack");
+        return NULL;
+    }
+
+    /* Parse arguments */
+    if(!PyArg_ParseTuple(args, "iy*ii:ipaddr_add", &af, &packed_ip, &prefix_len, &if_index)) {
+        return NULL;
+    }
+
+    /* Check that the length of the address matches the family */
+    if (af == AF_INET) {
+        if (packed_ip.len != sizeof(struct in_addr)) {
+            PyErr_SetString(PyExc_ValueError, "invalid length of packed IP address string");
+            PyBuffer_Release(&packed_ip);
+            return NULL;
+        }
+    } else if (af == AF_INET6) {
+        if (packed_ip.len != sizeof(struct in6_addr)) {
+            PyErr_SetString(PyExc_ValueError, "invalid length of packed IP address string");
+            PyBuffer_Release(&packed_ip);
+            return NULL;
+        }
+    } else {
+        PyErr_Format(PyExc_ValueError, "unknown address family %d", af);
+        PyBuffer_Release(&packed_ip);
+        return NULL;
+    }
+
+    if(picox_ipaddr_add(self->stack, af, packed_ip.buf, prefix_len, if_index) < 0) {
+        PyErr_SetString(PyExc_Exception, "failed to add ip address to interface");
+        PyBuffer_Release(&packed_ip);
+        return NULL;
+    }
+
+    PyBuffer_Release(&packed_ip);
+    Py_RETURN_NONE;
+}
+
 
 static PyMethodDef stack_methods[] = {
     {"getstack", (PyCFunction)stack_getstack, METH_NOARGS, getstack_doc},
+    
     {"if_nameindex", (PyCFunction)stack_if_nameindex, METH_NOARGS, if_nameindex_doc},
     {"if_nametoindex", (PyCFunction)stack_if_nametoindex, METH_VARARGS, if_nametoindex_doc},
     {"if_indextoname", (PyCFunction)stack_if_indextoname, METH_O, if_indextoname_doc},
+
+    {"ipaddr_add", (PyCFunction)stack_ipaddr_add, METH_VARARGS, ipaddr_add_doc},
+
 
     {NULL, NULL} /* sentinel */
 };
@@ -251,8 +314,6 @@ Create a stack with no interfaces or with one interface named vde0 and connected
 Methods of stack objects:\n\
 getstack() -- return the pointer to the network stack\n\
 ");
-
-
 
 static PyTypeObject stack_type = {
     PyVarObject_HEAD_INIT(0, 0)                 /* Must fill in type value later */
