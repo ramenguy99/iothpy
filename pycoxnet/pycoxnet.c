@@ -22,9 +22,26 @@ pycox_test(PyObject *self, PyObject *args)
     return PyUnicode_FromString("Hello from pycox!");
 }
 
+// static PyObject *
+// pycox_bind(PyObject *self, PyObject *args)
+// {
+//     struct sockaddr_in servaddr;
+//     int fd = 0;
+//     PyObject* dict;
+//     if(!PyArg_ParseTuple(args, "iO!", &fd, &PyDict_Type, &dict))
+//         return NULL;
+//     // printf("%d", fd);
+//     // servaddr.sin_family = dict->sin_family;
+//     // servaddr.sin_port = dict->sin_port;
+//     // servaddr.sin_addr.s_addr = dict->s_addr;
+//     // int bind = picox_bind(fd, (struct sockaddr *)&servaddr, sizeof(servaddr));
+
+//     return PyLong_FromUnsignedLong(bind);
+// }
+
 static PyMethodDef pycox_methods[] = {
     {"test",  pycox_test, METH_VARARGS, "Returns a test string"},
-
+    // {"bind", pycox_bind, METH_VARARGS, "bind addr"},
     {NULL, NULL, 0, NULL}        /* Sentinel */
 };
 
@@ -292,14 +309,14 @@ stack_ipaddr_add(stack_object* self, PyObject* args)
     Py_RETURN_NONE;
 }
 
-PyDoc_STRVAR(pycox_msocket_doc, "pycox_msocket(int domain, int type, int protocol)\n\
+PyDoc_STRVAR(msocket_doc, "msocket(int domain, int type, int protocol)\n\
 \n\
 create a pycox socket\n\
 return a file descriptor");
 
 
-static int
-stack_pycox_msocket(stack_object* self, PyObject *args, PyObject *kwds)
+static PyObject *
+stack_msocket(stack_object* self, PyObject *args)
 {
     int domain;
     int type;
@@ -317,14 +334,13 @@ stack_pycox_msocket(stack_object* self, PyObject *args, PyObject *kwds)
     //     return 0;
     
     if(!PyArg_ParseTuple(args, "iii", &domain, &type, &protocol))
-        return -1;
+        return NULL;
 
-    int fd = 0;
-
-    printf("%d, %d, %d", domain, type, protocol);
+    int fd = 1;
+    
     fd = picox_msocket(self->stack, domain, type, protocol);
 
-    return fd;
+    return PyLong_FromUnsignedLong(fd);
 
 }
 
@@ -338,7 +354,7 @@ static PyMethodDef stack_methods[] = {
 
     {"ipaddr_add", (PyCFunction)stack_ipaddr_add, METH_VARARGS, ipaddr_add_doc},
 
-    {"pycox_msocket", (PyCFunction)stack_pycox_msocket, METH_VARARGS | METH_KEYWORDS, pycox_msocket_doc},
+    {"msocket", (PyCFunction)stack_msocket, METH_VARARGS, msocket_doc},
 
 
     {NULL, NULL} /* sentinel */
@@ -354,21 +370,54 @@ getstack() -- return the pointer to the network stack\n\
 ");
 
 static PyTypeObject stack_type = {
-    PyVarObject_HEAD_INIT(0, 0)                 /* Must fill in type value later */
-    .tp_name = "_pycoxnet.stack",                             /* tp_name */
-    .tp_basicsize = sizeof(stack_object),                       /* tp_basicsize */                                          /* tp_itemsize */
-    .tp_dealloc = (destructor)stack_dealloc,                  /* tp_dealloc */
-    .tp_repr = (reprfunc)stack_repr,                       /* tp_repr */
-    .tp_str = (reprfunc)stack_str,                        /* tp_str */
-    .tp_setattro =PyObject_GenericGetAttr,                    /* tp_getattro */
-    .tp_flags = Py_TPFLAGS_DEFAULT | Py_TPFLAGS_BASETYPE,   /* tp_flags */
-    .tp_doc = stack_doc,                                  /* tp_doc */
-    .tp_methods = stack_methods,                              /* tp_methods */
-    .tp_init = stack_initobj,                              /* tp_init */
-    .tp_alloc = PyType_GenericAlloc,                        /* tp_alloc */
-    .tp_new = stack_new,                                  /* tp_new */
-    .tp_free = PyObject_Del,                               /* tp_free */
-    .tp_finalize = (destructor)stack_finalize,                 /* tp_finalize */
+  PyVarObject_HEAD_INIT(0, 0)                 /* Must fill in type value later */
+    "_pycoxnet.stack",                             /* tp_name */
+    sizeof(stack_object),                       /* tp_basicsize */
+    0,                                          /* tp_itemsize */
+    (destructor)stack_dealloc,                  /* tp_dealloc */
+    0,                                          /* tp_vectorcall_offset */
+    0,                                          /* tp_getattr */
+    0,                                          /* tp_setattr */
+    0,                                          /* tp_as_async */
+    (reprfunc)stack_repr,                       /* tp_repr */
+    0,                                          /* tp_as_number */
+    0,                                          /* tp_as_sequence */
+    0,                                          /* tp_as_mapping */
+    0,                                          /* tp_hash */
+    0,                                          /* tp_call */
+    (reprfunc)stack_str,                        /* tp_str */
+    PyObject_GenericGetAttr,                    /* tp_getattro */
+    0,                                          /* tp_setattro */
+    0,                                          /* tp_as_buffer */
+    Py_TPFLAGS_DEFAULT | Py_TPFLAGS_BASETYPE,   /* tp_flags */
+    stack_doc,                                  /* tp_doc */
+    0,                                          /* tp_traverse */
+    0,                                          /* tp_clear */
+    0,                                          /* tp_richcompare */
+    0,                                          /* tp_weaklistoffset */
+    0,                                          /* tp_iter */
+    0,                                          /* tp_iternext */
+    stack_methods,                              /* tp_methods */
+    0,                                          /* tp_members */
+    0,                                          /* tp_getset */
+    0,                                          /* tp_base */
+    0,                                          /* tp_dict */
+    0,                                          /* tp_descr_get */
+    0,                                          /* tp_descr_set */
+    0,                                          /* tp_dictoffset */
+    stack_initobj,                              /* tp_init */
+    PyType_GenericAlloc,                        /* tp_alloc */
+    stack_new,                                  /* tp_new */
+    PyObject_Del,                               /* tp_free */
+    0,                                          /* tp_is_gc */
+    0,                                          /* tp_bases */
+    0,                                          /* tp_mro */
+    0,                                          /* tp_cache */
+    0,                                          /* tp_subclasses */
+    0,                                          /* tp_weaklist */
+    0,                                          /* tp_del */
+    0,                                          /* tp_version_tag */
+    (destructor)stack_finalize,                 /* tp_finalize */
 };
 
 PyMODINIT_FUNC
