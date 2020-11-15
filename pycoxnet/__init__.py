@@ -1,4 +1,4 @@
-from ._pycoxnet import test
+from ._pycoxnet import test, bind, listen, accept, recv, send, close, connect, read, write
 from .pycoxnet2 import test2
 from ._pycoxnet import stack
 

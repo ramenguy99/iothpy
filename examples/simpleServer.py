@@ -1,34 +1,8 @@
 #! /usr/bin/python3
+
 import sys
-import pycoxnet
 import re
-import threading
-
-def handle(connfd):
-    print("got new conn {0}, {1}".format(connfd, threading.get_ident()))
-    while(True):
-        message = pycoxnet.recv(connfd, 1024)
-        message = "ciao"
-        if(message):
-            print("tid {0} GOT: {1}".format(threading.get_ident(), message))
-            pycoxnet.send(connfd, message)
-        else:
-            print("close conn {0} tid {1}".format(connfd, threading.get_ident()))
-            pycoxnet.close(connfd)
-            break
-    return
-
-def server(fd):
-    while True:
-        print("here")
-        connfd = pycoxnet.accept(fd, 0, 0)
-        if(connfd < 0):
-            print("error accept")
-            return
-        x = threading.Thread(target=handle, args=(connfd,), daemon=True)
-        x.start()
-        print("after thread")
-    return
+import pycoxnet
 
 def main():
     if(len(sys.argv) != 5):
@@ -63,12 +37,15 @@ def main():
         raise Exception("couldn't bind")
 
     pycoxnet.listen(fd, 5)
-    server(fd)
-    return;
 
-
-    
-
+    while True:
+        connfd = pycoxnet.accept(fd, 0, 0)
+        if(connfd < 0):
+            print("error accept")
+            return
+        print("got new conn {0}".format(connfd))
+        message = pycoxnet.recv(connfd, 1024)
+        print(message)
 
 if __name__ == "__main__":
     main()

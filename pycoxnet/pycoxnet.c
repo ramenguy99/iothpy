@@ -22,26 +22,196 @@ pycox_test(PyObject *self, PyObject *args)
     return PyUnicode_FromString("Hello from pycox!");
 }
 
-// static PyObject *
-// pycox_bind(PyObject *self, PyObject *args)
-// {
-//     struct sockaddr_in servaddr;
-//     int fd = 0;
-//     PyObject* dict;
-//     if(!PyArg_ParseTuple(args, "iO!", &fd, &PyDict_Type, &dict))
-//         return NULL;
-//     // printf("%d", fd);
-//     // servaddr.sin_family = dict->sin_family;
-//     // servaddr.sin_port = dict->sin_port;
-//     // servaddr.sin_addr.s_addr = dict->s_addr;
-//     // int bind = picox_bind(fd, (struct sockaddr *)&servaddr, sizeof(servaddr));
+static PyObject *
+pycox_bind(PyObject *self, PyObject *args)//funziona solo con "" come indirizzo di bind
+{
+    struct sockaddr_in servaddr;
+    int fd;
+    int type;
+    const char *addr;
+    unsigned int port;
+    int address;
 
-//     return PyLong_FromUnsignedLong(bind);
-// }
+    if(!PyArg_ParseTuple(args, "iiis", &fd, &type, &port, &addr))
+        return NULL;
+    
+    servaddr.sin_family = type;
+    servaddr.sin_port = htons(port);
+
+    if(strcmp(addr, "") == 0)
+        address = INADDR_ANY;
+
+    printf("address %d", address);
+    servaddr.sin_addr.s_addr = htonl(address);
+
+    int bind = picox_bind(fd, (struct sockaddr *)&servaddr, sizeof(servaddr));
+    return PyLong_FromUnsignedLong(bind);
+}
+
+static PyObject *
+pycox_listen(PyObject *self, PyObject *args)
+{
+    int fd;
+    int backlog;
+
+    if(!PyArg_ParseTuple(args, "ii", &fd, &backlog))
+        return NULL;
+    
+    return PyLong_FromUnsignedLong(picox_listen(fd, backlog));
+}
+
+static PyObject *
+pycox_accept(PyObject *self, PyObject *args)
+{
+    int fd;
+    int port;
+    int address;
+
+    if(!PyArg_ParseTuple(args, "iii", &fd, &port, &address))
+        return NULL;
+
+    int n = picox_accept(fd, NULL, NULL);
+
+    return PyLong_FromUnsignedLong(n); //wired
+    
+}
+
+static PyObject *
+pycox_recv(PyObject *self, PyObject *args){
+    int fd;
+    int size;
+
+    if(!PyArg_ParseTuple(args, "ii", &fd, &size))
+        return NULL;
+
+    char buffer[size];
+    PyObject *buf;
+    int n;
+
+    if((n = picox_recv(fd, buffer, size, 0)) <= 0){
+        printf("error");
+        return PyBytes_FromString("");
+    }
+
+    printf("pycoxnet : %s", buffer);
+
+    buf = PyBytes_FromStringAndSize(buffer, size);
+    return buf;
+}
+
+static PyObject *
+pycox_send(PyObject *self, PyObject *args){
+
+    int fd;
+    const char *message;
+
+    if(!PyArg_ParseTuple(args, "is", &fd, &message))
+        return NULL;
+    
+    return PyLong_FromUnsignedLong(picox_send(fd, message, sizeof(message), 0));
+}
+
+static PyObject *
+pycox_close(PyObject *self, PyObject *args)
+{
+    int fd;
+    if(!PyArg_ParseTuple(args, "i", &fd))
+        return NULL;
+
+    return PyLong_FromUnsignedLong(picox_close(fd));
+}
+
+static PyObject *
+pycox_connect(PyObject *self, PyObject *args)
+{
+    int fd;
+    int type;
+    int port;
+    Py_buffer packed_ip;
+    // const char* address;
+
+    if(!PyArg_ParseTuple(args, "iiiy*", &fd, &type, &port, &packed_ip))
+        return NULL;
+
+    /* Check that the length of the address matches the family */
+    if (type == AF_INET) {
+        if (packed_ip.len != sizeof(struct in_addr)) {
+            PyErr_SetString(PyExc_ValueError, "invalid length of packed IP address string");
+            PyBuffer_Release(&packed_ip);
+            return NULL;
+        }
+    } else if (type == AF_INET6) {
+        if (packed_ip.len != sizeof(struct in6_addr)) {
+            PyErr_SetString(PyExc_ValueError, "invalid length of packed IP address string");
+            PyBuffer_Release(&packed_ip);
+            return NULL;
+        }
+    } else {
+        PyErr_Format(PyExc_ValueError, "unknown address family %d", type);
+        PyBuffer_Release(&packed_ip);
+        return NULL;
+    }
+
+
+    struct sockaddr_in servaddr;
+
+    servaddr.sin_family = type;
+    servaddr.sin_port = htons(port);
+    servaddr.sin_addr.s_addr = *(int *)packed_ip.buf;
+
+    if(picox_connect(fd, (struct sockaddr *)&servaddr, sizeof(servaddr)) < 0) {
+        PyErr_SetString(PyExc_Exception, "failed to connect");
+        PyBuffer_Release(&packed_ip);
+        return NULL;
+    }
+
+    PyBuffer_Release(&packed_ip);
+    Py_RETURN_NONE;
+}
+
+
+static PyObject *
+pycox_read(PyObject *self, PyObject *args){
+    int fd;
+    int size;
+
+    if(!PyArg_ParseTuple(args, "ii", &fd, &size))
+        return NULL;
+
+    char buffer[size];
+    PyObject *buf;
+    int n;
+
+    if((n = picox_read(fd, buffer, size)) <= 0)
+        return PyBytes_FromString("");
+
+    buf = PyBytes_FromStringAndSize(buffer, size);
+    return buf;
+}
+
+static PyObject *
+pycox_write(PyObject *self, PyObject *args){
+
+    int fd;
+    const char *message;
+
+    if(!PyArg_ParseTuple(args, "is", &fd, &message))
+        return NULL;
+    
+    return PyLong_FromUnsignedLong(picox_write(fd, message, sizeof(message)));
+}
 
 static PyMethodDef pycox_methods[] = {
     {"test",  pycox_test, METH_VARARGS, "Returns a test string"},
-    // {"bind", pycox_bind, METH_VARARGS, "bind addr"},
+    {"bind", pycox_bind, METH_VARARGS, "bind addr"},
+    {"listen", pycox_listen, METH_VARARGS, "start listen on socket identified by fd"},
+    {"accept", pycox_accept, METH_VARARGS, "accept connection on socket identified by fd"},
+    {"recv", pycox_recv, METH_VARARGS, "recv size bytes as string from socket indentified by fd"},
+    {"send", pycox_send, METH_VARARGS, "send string to socket indentified by fd"},
+    {"close", pycox_close, METH_VARARGS, "close socket identified by fd"},
+    {"connect", pycox_connect, METH_VARARGS, "connect socket identified by fd sin_addr"},
+    {"read", pycox_read, METH_VARARGS, "read size bytes as string from socket identified by fd"},
+    {"write", pycox_write, METH_VARARGS, "write message to socket identified by fd"},
     {NULL, NULL, 0, NULL}        /* Sentinel */
 };
 
