@@ -38,8 +38,7 @@ def main():
         print("invalid server addr")
 
     pycoxnet.connect(fd, pycoxnet.AF_INET, port, sin_addr)
-    time.sleep(2)
-    pycoxnet.write(fd, "ciao")
+    pycoxnet.write(fd, b'ciao')
     
 if __name__ == "__main__":
     main()

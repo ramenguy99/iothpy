@@ -76,39 +76,20 @@ pycox_accept(PyObject *self, PyObject *args)
     
 }
 
+static PyObject* pycox_read(PyObject *self, PyObject *args);
+
 static PyObject *
-pycox_recv(PyObject *self, PyObject *args){
-    int fd;
-    int size;
-
-    if(!PyArg_ParseTuple(args, "ii", &fd, &size))
-        return NULL;
-
-    char buffer[size];
-    PyObject *buf;
-    int n;
-
-    if((n = picox_recv(fd, buffer, size, 0)) <= 0){
-        printf("error");
-        return PyBytes_FromString("");
-    }
-
-    printf("pycoxnet : %s", buffer);
-
-    buf = PyBytes_FromStringAndSize(buffer, size);
-    return buf;
+pycox_recv(PyObject *self, PyObject *args)
+{
+    return pycox_read(self, args);
 }
 
+static PyObject* pycox_write(PyObject *self, PyObject *args);
+
 static PyObject *
-pycox_send(PyObject *self, PyObject *args){
-
-    int fd;
-    const char *message;
-
-    if(!PyArg_ParseTuple(args, "is", &fd, &message))
-        return NULL;
-    
-    return PyLong_FromUnsignedLong(picox_send(fd, message, sizeof(message), 0));
+pycox_send(PyObject *self, PyObject *args) 
+{
+    return pycox_write(self, args);
 }
 
 static PyObject *
@@ -178,14 +159,19 @@ pycox_read(PyObject *self, PyObject *args){
     if(!PyArg_ParseTuple(args, "ii", &fd, &size))
         return NULL;
 
-    char buffer[size];
-    PyObject *buf;
+    PyObject *buf = PyBytes_FromStringAndSize(NULL, size);
     int n;
 
-    if((n = picox_read(fd, buffer, size)) <= 0)
-        return PyBytes_FromString("");
+    if((n = picox_read(fd, PyBytes_AsString(buf), size)) <= 0) {
+        PyErr_SetString(PyExc_Exception, "failed to read from socket");
+        return NULL;
+    }
 
-    buf = PyBytes_FromStringAndSize(buffer, size);
+    if(n != size) {
+        //Resize the buffer since we read less bytes than expected
+        _PyBytes_Resize(&buf, n);
+    }
+
     return buf;
 }
 
@@ -194,11 +180,12 @@ pycox_write(PyObject *self, PyObject *args){
 
     int fd;
     const char *message;
+    Py_buffer buf;
 
-    if(!PyArg_ParseTuple(args, "is", &fd, &message))
+    if(!PyArg_ParseTuple(args, "iy*", &fd, &buf))
         return NULL;
     
-    return PyLong_FromUnsignedLong(picox_write(fd, message, sizeof(message)));
+    return PyLong_FromUnsignedLong(picox_write(fd, buf.buf, buf.len));
 }
 
 static PyMethodDef pycox_methods[] = {
@@ -250,8 +237,7 @@ stack_finalize(stack_object* self)
 
     /* Delete the picox network stack */
     if(self->stack) {
-        /* TODO: delstack gives a segfault, probably a bug in picoxnet  */
-        /* picox_delstack(self->stack); */
+        /*picox_delstack(self->stack);*/
     }
 
     /* Restore the saved exception. */
