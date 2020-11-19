@@ -16,14 +16,34 @@
 #include <nlinline+.h>
 NLINLINE_LIBMULTI(picox_)
 
-static PyObject *
-pycox_test(PyObject *self, PyObject *args)
-{
-    return PyUnicode_FromString("Hello from pycox!");
-}
+typedef struct stack_object {
+    PyObject_HEAD
+    struct picox* stack;
+} stack_object;
 
+typedef struct socket_object 
+{
+    PyObject_HEAD
+    /* 
+        Python object representing the stack to which the socket belongs 
+        The socket increses the reference count of the stack on creation
+        and decreases it when closed to make sure the stack is not freed
+        before the socket is closed.
+    */
+    PyObject* stack;
+
+    /* File descriptor for the socket*/
+    int fd;
+
+    /* Socket properties */
+    int family;
+    int type;
+    int proto;
+} socket_object;
+
+//Socket methods
 static PyObject *
-pycox_bind(PyObject *self, PyObject *args)//funziona solo con "" come indirizzo di bind
+sock_bind(PyObject *self, PyObject *args)//funziona solo con "" come indirizzo di bind
 {
     struct sockaddr_in servaddr;
     int fd;
@@ -49,7 +69,7 @@ pycox_bind(PyObject *self, PyObject *args)//funziona solo con "" come indirizzo 
 }
 
 static PyObject *
-pycox_listen(PyObject *self, PyObject *args)
+sock_listen(PyObject *self, PyObject *args)
 {
     int fd;
     int backlog;
@@ -61,7 +81,7 @@ pycox_listen(PyObject *self, PyObject *args)
 }
 
 static PyObject *
-pycox_accept(PyObject *self, PyObject *args)
+sock_accept(PyObject *self, PyObject *args)
 {
     int fd;
     int port;
@@ -76,34 +96,65 @@ pycox_accept(PyObject *self, PyObject *args)
     
 }
 
-static PyObject* pycox_read(PyObject *self, PyObject *args);
-
 static PyObject *
-pycox_recv(PyObject *self, PyObject *args)
-{
-    return pycox_read(self, args);
-}
-
-static PyObject* pycox_write(PyObject *self, PyObject *args);
-
-static PyObject *
-pycox_send(PyObject *self, PyObject *args) 
-{
-    return pycox_write(self, args);
-}
-
-static PyObject *
-pycox_close(PyObject *self, PyObject *args)
+sock_recv(PyObject *self, PyObject *args)
 {
     int fd;
-    if(!PyArg_ParseTuple(args, "i", &fd))
+    int size;
+
+    if(!PyArg_ParseTuple(args, "ii", &fd, &size))
         return NULL;
 
-    return PyLong_FromUnsignedLong(picox_close(fd));
+    PyObject *buf = PyBytes_FromStringAndSize(NULL, size);
+    int n;
+
+    if((n = picox_read(fd, PyBytes_AsString(buf), size)) <= 0) {
+        PyErr_SetString(PyExc_Exception, "failed to read from socket");
+        return NULL;
+    }
+
+    if(n != size) {
+        //Resize the buffer since we read less bytes than expected
+        _PyBytes_Resize(&buf, n);
+    }
+
+    return buf;
 }
 
 static PyObject *
-pycox_connect(PyObject *self, PyObject *args)
+sock_send(PyObject *self, PyObject *args) 
+{
+    int fd;
+    const char *message;
+    Py_buffer buf;
+
+    if(!PyArg_ParseTuple(args, "iy*", &fd, &buf))
+        return NULL;
+    
+    return PyLong_FromUnsignedLong(picox_write(fd, buf.buf, buf.len));
+}
+
+
+
+static PyObject *
+sock_close(PyObject *self, PyObject *args)
+{
+    socket_object* s = (socket_object*)self;
+    if(s->fd != -1)
+    {
+        int res = picox_close(s->fd);
+        s->fd = -1;
+        if(res < 0 && errno != ECONNRESET) {
+            return NULL;
+        }
+    }
+
+    //Return none if no errors
+    Py_RETURN_NONE;
+}
+
+static PyObject *
+sock_connect(PyObject *self, PyObject *args)
 {
     int fd;
     int type;
@@ -150,55 +201,149 @@ pycox_connect(PyObject *self, PyObject *args)
     Py_RETURN_NONE;
 }
 
+static PyMethodDef socket_methods[] = 
+{
+    {"bind",    sock_bind,    METH_O,       "bind addr"},
+    {"close",   sock_close,   METH_NOARGS,  "close socket identified by fd"},
+    {"connect", sock_connect, METH_O,       "connect socket identified by fd sin_addr"},
+    {"listen",  sock_listen,  METH_VARARGS, "start listen on socket identified by fd"},
+    {"accept",  sock_accept,  METH_NOARGS,  "accept connection on socket identified by fd"},
+    {"recv",    sock_recv,    METH_VARARGS, "recv size bytes as string from socket indentified by fd"},
+    {"send",    sock_send,    METH_VARARGS, "send string to socket indentified by fd"}, 
 
-static PyObject *
-pycox_read(PyObject *self, PyObject *args){
-    int fd;
-    int size;
+    {NULL, NULL} /* sentinel */
+};
 
-    if(!PyArg_ParseTuple(args, "ii", &fd, &size))
-        return NULL;
+// Socket type functions
 
-    PyObject *buf = PyBytes_FromStringAndSize(NULL, size);
-    int n;
-
-    if((n = picox_read(fd, PyBytes_AsString(buf), size)) <= 0) {
-        PyErr_SetString(PyExc_Exception, "failed to read from socket");
-        return NULL;
-    }
-
-    if(n != size) {
-        //Resize the buffer since we read less bytes than expected
-        _PyBytes_Resize(&buf, n);
-    }
-
-    return buf;
-}
-
-static PyObject *
-pycox_write(PyObject *self, PyObject *args){
-
-    int fd;
-    const char *message;
-    Py_buffer buf;
-
-    if(!PyArg_ParseTuple(args, "iy*", &fd, &buf))
-        return NULL;
+static void
+socket_dealloc(socket_object* self)
+{
+    if(PyObject_CallFinalizerFromDealloc((PyObject*)self) < 0)
+        return;
     
-    return PyLong_FromUnsignedLong(picox_write(fd, buf.buf, buf.len));
+    PyTypeObject* tp = Py_TYPE(self);
+    tp->tp_free(self);
 }
+
+static PyObject*
+socket_repr(socket_object* self)
+{
+    return PyUnicode_FromFormat( "<socket object, fd=%ld, family=%d, type=%d, proto=%d>",
+        self->fd, self->family, self->type, self->proto);
+}
+
+static int
+socket_initobj(PyObject* self, PyObject* args, PyObject* kwds)
+{
+    socket_object* s = (socket_object*)self;
+    s->family = AF_INET;
+    s->type = SOCK_STREAM;
+    s->proto = 0;
+
+    if(!PyArg_ParseTuple(args, "Oiii", &s->stack, &s->family, &s->type, &s->proto))
+        return -1;
+
+    Py_INCREF(s->stack);
+
+    s->fd = picox_msocket(((struct stack_object*)s->stack)->stack, s->family, s->type, s->proto);
+    if(s->fd == -1)
+    {
+        PyErr_SetFromErrno(PyExc_OSError);
+        return -1;
+    }
+
+    return 0;
+}
+
+static PyObject*
+socket_new(PyTypeObject *type, PyObject *args, PyObject *kwds)
+{
+    PyObject *new;
+    new = type->tp_alloc(type, 0);
+
+    if (new != NULL) {
+        socket_object* s = (socket_object*)new;
+        s->fd = -1;
+    }
+    
+    return new;
+}
+
+static void
+socket_finalize(socket_object* s)
+{
+    PyObject *error_type, *error_value, *error_traceback;
+    /* Save the current exception, if any. */
+    PyErr_Fetch(&error_type, &error_value, &error_traceback);
+
+    Py_DECREF(s->stack);
+    if (s->fd != -1) {
+        picox_close(s->fd);
+        s->fd = -1;
+    }
+
+    /* Restore the saved exception. */
+    PyErr_Restore(error_type, error_value, error_traceback);
+}
+
+PyDoc_STRVAR(socket_doc, "Test documentation for socket type");
+ 
+static PyTypeObject socket_type = {
+    PyVarObject_HEAD_INIT(0, 0)         /* Must fill in type value later */
+    "_pycoxnet.socket",                         /* tp_name */
+    sizeof(socket_object),                      /* tp_basicsize */
+    0,                                          /* tp_itemsize */
+    (destructor)socket_dealloc,                 /* tp_dealloc */
+    0,                                          /* tp_vectorcall_offset */
+    0,                                          /* tp_getattr */
+    0,                                          /* tp_setattr */
+    0,                                          /* tp_as_async */
+    (reprfunc)socket_repr,                      /* tp_repr */
+    0,                                          /* tp_as_number */
+    0,                                          /* tp_as_sequence */
+    0,                                          /* tp_as_mapping */
+    0,                                          /* tp_hash */
+    0,                                          /* tp_call */
+    0,                                          /* tp_str */
+    PyObject_GenericGetAttr,                    /* tp_getattro */
+    0,                                          /* tp_setattro */
+    0,                                          /* tp_as_buffer */
+    Py_TPFLAGS_DEFAULT | Py_TPFLAGS_BASETYPE,   /* tp_flags */
+    socket_doc,                                 /* tp_doc */
+    0,                                          /* tp_traverse */
+    0,                                          /* tp_clear */
+    0,                                          /* tp_richcompare */
+    0,                                          /* tp_weaklistoffset */
+    0,                                          /* tp_iter */
+    0,                                          /* tp_iternext */
+    socket_methods,                             /* tp_methods */
+    0,                          /* tp_members */
+    0,                          /* tp_getset */
+    0,                                          /* tp_base */
+    0,                                          /* tp_dict */
+    0,                                          /* tp_descr_get */
+    0,                                          /* tp_descr_set */
+    0,                                          /* tp_dictoffset */
+    socket_initobj,                             /* tp_init */
+    PyType_GenericAlloc,                        /* tp_alloc */
+    socket_new,                                 /* tp_new */
+    PyObject_Del,                               /* tp_free */
+    0,                                          /* tp_is_gc */
+    0,                                          /* tp_bases */
+    0,                                          /* tp_mro */
+    0,                                          /* tp_cache */
+    0,                                          /* tp_subclasses */
+    0,                                          /* tp_weaklist */
+    0,                                          /* tp_del */
+    0,                                          /* tp_version_tag */
+    (destructor)socket_finalize,                /* tp_finalize */
+};
+
+ 
+
 
 static PyMethodDef pycox_methods[] = {
-    {"test",  pycox_test, METH_VARARGS, "Returns a test string"},
-    {"bind", pycox_bind, METH_VARARGS, "bind addr"},
-    {"listen", pycox_listen, METH_VARARGS, "start listen on socket identified by fd"},
-    {"accept", pycox_accept, METH_VARARGS, "accept connection on socket identified by fd"},
-    {"recv", pycox_recv, METH_VARARGS, "recv size bytes as string from socket indentified by fd"},
-    {"send", pycox_send, METH_VARARGS, "send string to socket indentified by fd"},
-    {"close", pycox_close, METH_VARARGS, "close socket identified by fd"},
-    {"connect", pycox_connect, METH_VARARGS, "connect socket identified by fd sin_addr"},
-    {"read", pycox_read, METH_VARARGS, "read size bytes as string from socket identified by fd"},
-    {"write", pycox_write, METH_VARARGS, "write message to socket identified by fd"},
     {NULL, NULL, 0, NULL}        /* Sentinel */
 };
 
@@ -210,11 +355,6 @@ static struct PyModuleDef pycox_module = {
                       or -1 if the module keeps state in global variables. */
     pycox_methods
 };
-
-typedef struct stack_object {
-    PyObject_HEAD
-    struct picox* stack;
-} stack_object;
 
 static void 
 stack_dealloc(stack_object* self)
@@ -465,39 +605,35 @@ stack_ipaddr_add(stack_object* self, PyObject* args)
     Py_RETURN_NONE;
 }
 
-PyDoc_STRVAR(msocket_doc, "msocket(int domain, int type, int protocol)\n\
-\n\
-create a pycox socket\n\
-return a file descriptor");
-
+PyDoc_STRVAR(stack_socket_doc, "create a new socket for the network stack");
 
 static PyObject *
-stack_msocket(stack_object* self, PyObject *args)
+stack_socket(stack_object* self, PyObject *args, PyObject *kwds)
 {
-    int domain;
-    int type;
-    int protocol;
-
     if(!self->stack) 
     {
         PyErr_SetString(PyExc_Exception, "Uninitialized stack");
         return NULL;
     }
 
-    // static char *kwlist = {"domain", "type", "protocol"};
-
-    // if(!PyArg_ParseTupleAndKeywords(args, kwds, "iii", kwlist, &domain, &type, &protocol))
-    //     return 0;
-    
-    if(!PyArg_ParseTuple(args, "iii", &domain, &type, &protocol))
+    // Parse keyword arguments the same way Python does it
+    static char *keywords[] = {"family", "type", "proto", 0};
+    int family = AF_INET;
+    int type = SOCK_STREAM;
+    int proto = 0;
+    if(!PyArg_ParseTupleAndKeywords(args, kwds, "|iii:socket", keywords, &family, &type, &proto))
         return NULL;
 
-    int fd = 1;
-    
-    fd = picox_msocket(self->stack, domain, type, protocol);
+    // Prepare arguments for the socket constructor
+    PyObject* socket_args = Py_BuildValue("Oiii", (PyObject*)self, family, type, proto);
 
-    return PyLong_FromUnsignedLong(fd);
+    // Instantiate a socket by calling the constructor of the socket type
+    PyObject* socket = PyObject_CallObject((PyObject*)&socket_type, socket_args);
 
+    // Release arguments
+    Py_DECREF(socket_args);
+
+    return socket;
 }
 
 
@@ -510,7 +646,7 @@ static PyMethodDef stack_methods[] = {
 
     {"ipaddr_add", (PyCFunction)stack_ipaddr_add, METH_VARARGS, ipaddr_add_doc},
 
-    {"msocket", (PyCFunction)stack_msocket, METH_VARARGS, msocket_doc},
+    {"socket", (PyCFunction)stack_socket, METH_VARARGS | METH_KEYWORDS, stack_socket_doc},
 
 
     {NULL, NULL} /* sentinel */
@@ -554,6 +690,7 @@ static PyTypeObject stack_type = {
     0,                                          /* tp_iter */
     0,                                          /* tp_iternext */
     stack_methods,                              /* tp_methods */
+
     0,                                          /* tp_members */
     0,                                          /* tp_getset */
     0,                                          /* tp_base */
@@ -580,6 +717,7 @@ PyMODINIT_FUNC
 PyInit__pycoxnet(void)
 {
     Py_TYPE(&stack_type) = &PyType_Type;
+    Py_TYPE(&socket_type) = &PyType_Type;
 
     PyObject* module = PyModule_Create(&pycox_module);
 
