@@ -156,48 +156,85 @@ sock_close(PyObject *self, PyObject *args)
 static PyObject *
 sock_connect(PyObject *self, PyObject *args)
 {
-    int fd;
-    int type;
+    socket_object* s = (socket_object*)self;
+
+    char* ip_addr_string;
     int port;
-    Py_buffer packed_ip;
-    // const char* address;
 
-    if(!PyArg_ParseTuple(args, "iiiy*", &fd, &type, &port, &packed_ip))
-        return NULL;
-
-    /* Check that the length of the address matches the family */
-    if (type == AF_INET) {
-        if (packed_ip.len != sizeof(struct in_addr)) {
-            PyErr_SetString(PyExc_ValueError, "invalid length of packed IP address string");
-            PyBuffer_Release(&packed_ip);
-            return NULL;
-        }
-    } else if (type == AF_INET6) {
-        if (packed_ip.len != sizeof(struct in6_addr)) {
-            PyErr_SetString(PyExc_ValueError, "invalid length of packed IP address string");
-            PyBuffer_Release(&packed_ip);
-            return NULL;
-        }
-    } else {
-        PyErr_Format(PyExc_ValueError, "unknown address family %d", type);
-        PyBuffer_Release(&packed_ip);
-        return NULL;
+    if (!PyTuple_Check(args)) 
+    {
+        PyErr_Format(PyExc_TypeError, "connect(): argument must be tuple (host, port) not %.500s", Py_TYPE(args)->tp_name);
+        return 0;
     }
 
-
-    struct sockaddr_in servaddr;
-
-    servaddr.sin_family = type;
-    servaddr.sin_port = htons(port);
-    servaddr.sin_addr.s_addr = *(int *)packed_ip.buf;
-
-    if(picox_connect(fd, (struct sockaddr *)&servaddr, sizeof(servaddr)) < 0) {
-        PyErr_SetString(PyExc_Exception, "failed to connect");
-        PyBuffer_Release(&packed_ip);
-        return NULL;
+    if (!PyArg_ParseTuple(args, "si;AF_INET address must be a pair (host, port)",
+                          &ip_addr_string, &port))
+    {
+        if (PyErr_ExceptionMatches(PyExc_OverflowError)) 
+        {
+            PyErr_Format(PyExc_OverflowError, "connect(): port must be 0-65535");
+        }
+        return 0;
     }
 
-    PyBuffer_Release(&packed_ip);
+    if (port < 0 || port > 0xffff) {
+        PyErr_Format(PyExc_OverflowError, "connect(): port must be 0-65535");
+        return 0;
+    }
+
+   // const char* address;
+    switch (s->family) {
+        case AF_INET:
+        {
+            struct sockaddr_in addr;
+            addr.sin_family = AF_INET;
+            addr.sin_port = htons(port);
+
+            if(inet_pton(AF_INET, ip_addr_string, &addr.sin_addr) != 1) 
+            {
+                PyErr_SetString(PyExc_ValueError, "invalid ip address");
+                return 0;
+            }
+
+            int res;
+            Py_BEGIN_ALLOW_THREADS
+            res = picox_connect(s->fd, &addr, sizeof(addr));
+            Py_END_ALLOW_THREADS
+
+            if(res != 0) {
+                PyErr_SetFromErrno(PyExc_OSError);
+                return 0;
+            }
+        } break;
+
+        case AF_INET6:
+        {
+            struct sockaddr_in6 addr;
+            addr.sin6_family = AF_INET6;
+            addr.sin6_port = htons(port);
+
+            if(inet_pton(AF_INET6, ip_addr_string, &addr.sin6_addr) != 1) 
+            {
+                PyErr_SetString(PyExc_ValueError, "invalid ip address");
+                return 0;
+            }
+
+            int res;
+            Py_BEGIN_ALLOW_THREADS
+            res = picox_connect(s->fd, &addr, sizeof(addr));
+            Py_END_ALLOW_THREADS
+
+            if(res != 0) {
+                PyErr_SetFromErrno(PyExc_OSError);
+                return 0;
+            }
+        } break;
+
+        default:
+        {
+        } break;
+    }
+
     Py_RETURN_NONE;
 }
 
