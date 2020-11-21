@@ -5,7 +5,7 @@ import pycoxnet
 
 if(len(sys.argv) != 6):
     name = sys.argv[0]
-    print("Usage: {0} vdeurl client_ip prefix server_ip port\ne,g: {1} vxvde://234.0.0.1 10.0.0.1 24 10.0.0.2 5000\n\n".format(name, name))
+    print("Usage: {0} vdeurl client_ip prefix server_ip port\ne,g: {1} vxvde://234.0.0.1 10.0.0.2 24 10.0.0.1 5000\n\n".format(name, name))
     exit(1)
 
 stack  = pycoxnet.stack(sys.argv[1])

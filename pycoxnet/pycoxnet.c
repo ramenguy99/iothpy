@@ -41,59 +41,263 @@ typedef struct socket_object
     int proto;
 } socket_object;
 
+
+/* Convert IPv4 sockaddr to a Python str. */
+static PyObject *
+make_ipv4_addr(struct sockaddr_in *addr)
+{
+    char buf[INET_ADDRSTRLEN];
+    if (inet_ntop(AF_INET, &addr->sin_addr, buf, sizeof(buf)) == NULL) {
+        PyErr_SetFromErrno(PyExc_OSError);
+        return NULL;
+    }
+    return PyUnicode_FromString(buf);
+}
+
+/* Convert IPv6 sockaddr to a Python str. */
+static PyObject *
+make_ipv6_addr(struct sockaddr_in6 *addr)
+{
+    char buf[INET6_ADDRSTRLEN];
+    if (inet_ntop(AF_INET6, &addr->sin6_addr, buf, sizeof(buf)) == NULL) {
+        PyErr_SetFromErrno(PyExc_OSError);
+        return NULL;
+    }
+    return PyUnicode_FromString(buf);
+}
+
+/* Utility to create a tuple representing the given sockaddr suitable
+   for passing it back to bind, connect etc.. */
+static PyObject *
+make_sockaddr(struct sockaddr *addr, size_t addrlen)
+{
+    if (addrlen == 0) {
+        /* No address -- may be recvfrom() from known socket */
+        Py_RETURN_NONE;
+    }
+
+    switch (addr->sa_family) {
+        case AF_INET:
+        {
+            struct sockaddr_in *a = (struct sockaddr_in *)addr;
+            PyObject *addrobj = make_ipv4_addr(a);
+            PyObject *ret = NULL;
+            if (addrobj) {
+                ret = Py_BuildValue("Oi", addrobj, ntohs(a->sin_port));
+                Py_DECREF(addrobj);
+            }
+            return ret; 
+        } break;
+
+        case AF_INET6:
+        {
+            struct sockaddr_in6 *a = (struct sockaddr_in6 *)addr;
+            PyObject *addrobj = make_ipv6_addr(a);
+            PyObject *ret = NULL;
+            if (addrobj) {
+                ret = Py_BuildValue("OiII",
+                                    addrobj,
+                                    ntohs(a->sin6_port),
+                                    ntohl(a->sin6_flowinfo),
+                                    a->sin6_scope_id);
+                Py_DECREF(addrobj);
+            }
+            return ret;
+        } break;
+
+        default:
+        {
+            Py_RETURN_NONE;
+        } break;
+    }
+}
+
+/* Utility to get a sockaddr from a tuple argument passed to a python function.
+   addr must be a pointer to an allocated sockaddr struct of the proper size for the 
+   family of the socket. Returns 0 on invalid arguments */
+static int
+get_sockaddr_from_tuple(char* func_name, socket_object* s, PyObject* args, struct sockaddr* sockaddr, socklen_t* len)
+{
+    char* ip_addr_string;
+    int port;
+
+    if (!PyTuple_Check(args)) 
+    {
+        PyErr_Format(PyExc_TypeError, "%s(): argument must be tuple (host, port) not %.500s", func_name, Py_TYPE(args)->tp_name);
+        return 0;
+    }
+
+    if (!PyArg_ParseTuple(args, "si;AF_INET address must be a pair (host, port)",
+                          &ip_addr_string, &port))
+    {
+        if (PyErr_ExceptionMatches(PyExc_OverflowError)) 
+        {
+            PyErr_Format(PyExc_OverflowError, "%s(): port must be 0-65535", func_name);
+        }
+        return 0;
+    }
+
+    if (port < 0 || port > 0xffff) {
+        PyErr_Format(PyExc_OverflowError, "%s(): port must be 0-65535", func_name);
+        return 0;
+    }
+
+    // const char* address;
+    switch (s->family) {
+        case AF_INET:
+        {
+            struct sockaddr_in* addr = (struct sockaddr_in*)sockaddr;
+            if(len)
+                *len = sizeof(*addr);
+
+            addr->sin_family = AF_INET;
+            addr->sin_port = htons(port);
+
+            /* Special case empty string to INADDR_ANY */
+            if(ip_addr_string[0] == '\0') 
+            {
+                addr->sin_addr.s_addr = htonl(INADDR_ANY);
+            }
+            /* Special case <broadcast> string to INADDR_BROADCAST */
+            else if(strcmp(ip_addr_string, "<broadcast>") == 0)
+            {
+                addr->sin_addr.s_addr = htonl(INADDR_BROADCAST);
+            }
+            else 
+            {
+                if(inet_pton(AF_INET, ip_addr_string, &addr->sin_addr) != 1) 
+                {
+                    PyErr_SetString(PyExc_ValueError, "invalid ip address");
+                    return 0;
+                }
+            }
+        } break;
+
+        case AF_INET6:
+        {
+            struct sockaddr_in6* addr = (struct sockaddr_in6*)sockaddr;
+            if(len)
+                *len = sizeof(*addr);
+
+            addr->sin6_family = AF_INET6;
+            addr->sin6_port = htons(port);
+
+            /* Special case empty string to INADDR_ANY */
+            if(ip_addr_string[0] == '\0') 
+            {
+                addr->sin6_addr = in6addr_any;
+            }
+            else 
+            {
+                if(inet_pton(AF_INET6, ip_addr_string, &addr->sin6_addr) != 1) 
+                {
+                    PyErr_SetString(PyExc_ValueError, "invalid ip address");
+                    return 0;
+                }
+            }
+        } break;
+
+        default:
+        {
+            PyErr_SetString(PyExc_ValueError, "invalid socket family");
+            return 0;
+        } break;
+    }
+
+    return 1;
+}
+
 //Socket methods
 static PyObject *
 sock_bind(PyObject *self, PyObject *args)//funziona solo con "" come indirizzo di bind
 {
-    struct sockaddr_in servaddr;
-    int fd;
-    int type;
-    const char *addr;
-    unsigned int port;
-    int address;
+    socket_object* s = (socket_object*)self;
 
-    if(!PyArg_ParseTuple(args, "iiis", &fd, &type, &port, &addr))
+    struct sockaddr_storage addrbuf;
+    socklen_t addrlen;
+    if(!get_sockaddr_from_tuple("bind", s, args, (struct sockaddr*)&addrbuf, &addrlen))
+    {
         return NULL;
-    
-    servaddr.sin_family = type;
-    servaddr.sin_port = htons(port);
+    }
 
-    if(strcmp(addr, "") == 0)
-        address = INADDR_ANY;
+    int res;
+    Py_BEGIN_ALLOW_THREADS
+    res = picox_bind(s->fd, (struct sockaddr*)&addrbuf, addrlen);
+    Py_END_ALLOW_THREADS
 
-    printf("address %d", address);
-    servaddr.sin_addr.s_addr = htonl(address);
+    if(res != 0) {
+        PyErr_SetFromErrno(PyExc_OSError);
+        return 0;
+    }
 
-    int bind = picox_bind(fd, (struct sockaddr *)&servaddr, sizeof(servaddr));
-    return PyLong_FromUnsignedLong(bind);
+    Py_RETURN_NONE;
 }
 
 static PyObject *
 sock_listen(PyObject *self, PyObject *args)
 {
-    int fd;
-    int backlog;
+    socket_object* s = (socket_object*)self;
 
-    if(!PyArg_ParseTuple(args, "ii", &fd, &backlog))
+    int backlog = Py_MIN(SOMAXCONN, 128);
+    int res;
+
+    if (!PyArg_ParseTuple(args, "|i:listen", &backlog))
         return NULL;
-    
-    return PyLong_FromUnsignedLong(picox_listen(fd, backlog));
+
+    if (backlog < 0)
+        backlog = 0;
+
+
+    Py_BEGIN_ALLOW_THREADS
+    res = picox_listen(s->fd, backlog);
+    Py_END_ALLOW_THREADS
+
+    if(res != 0) {
+        PyErr_SetFromErrno(PyExc_OSError);
+        return 0;
+    }
+
+
+    Py_RETURN_NONE;
 }
 
+static PyObject* new_socket_from_fd(stack_object* stack, int family, int type, int proto, int fd);
+
 static PyObject *
-sock_accept(PyObject *self, PyObject *args)
+sock_accept(PyObject *self, PyObject* unused_args)
 {
-    int fd;
-    int port;
-    int address;
+    socket_object* s = (socket_object*)self;
 
-    if(!PyArg_ParseTuple(args, "iii", &fd, &port, &address))
+
+    struct sockaddr_storage addrbuf;
+    socklen_t addrlen;
+
+    int connfd;
+    Py_BEGIN_ALLOW_THREADS
+    connfd = picox_accept(s->fd, (struct sockaddr*)&addrbuf, &addrlen);
+    Py_END_ALLOW_THREADS
+
+    if(connfd == -1) {
+        PyErr_SetFromErrno(PyExc_OSError);
+    }
+
+    PyObject* sock = new_socket_from_fd((stack_object*)s->stack, s->family, s->type, s->proto, connfd);
+    if(!sock) {
         return NULL;
+    }
 
-    int n = picox_accept(fd, NULL, NULL);
+    PyObject* addr = make_sockaddr((struct sockaddr*)&addrbuf, addrlen);
+    if(!addr) {
+        Py_XDECREF(sock);
+        return NULL;
+    }
 
-    return PyLong_FromUnsignedLong(n); //wired
-    
+    PyObject* res = PyTuple_Pack(2, sock, addr);
+
+    Py_XDECREF(sock);
+    Py_XDECREF(addr);
+
+    return res;
 }
 
 static PyObject *
@@ -158,81 +362,21 @@ sock_connect(PyObject *self, PyObject *args)
 {
     socket_object* s = (socket_object*)self;
 
-    char* ip_addr_string;
-    int port;
-
-    if (!PyTuple_Check(args)) 
+    struct sockaddr_storage addrbuf;
+    int addrlen;
+    if(!get_sockaddr_from_tuple("connect", s, args, (struct sockaddr*)&addrbuf, &addrlen))
     {
-        PyErr_Format(PyExc_TypeError, "connect(): argument must be tuple (host, port) not %.500s", Py_TYPE(args)->tp_name);
-        return 0;
+        return NULL;
     }
 
-    if (!PyArg_ParseTuple(args, "si;AF_INET address must be a pair (host, port)",
-                          &ip_addr_string, &port))
-    {
-        if (PyErr_ExceptionMatches(PyExc_OverflowError)) 
-        {
-            PyErr_Format(PyExc_OverflowError, "connect(): port must be 0-65535");
-        }
+    int res;
+    Py_BEGIN_ALLOW_THREADS
+    res = picox_connect(s->fd, (struct sockaddr*)&addrbuf, addrlen);
+    Py_END_ALLOW_THREADS
+
+    if(res != 0) {
+        PyErr_SetFromErrno(PyExc_OSError);
         return 0;
-    }
-
-    if (port < 0 || port > 0xffff) {
-        PyErr_Format(PyExc_OverflowError, "connect(): port must be 0-65535");
-        return 0;
-    }
-
-   // const char* address;
-    switch (s->family) {
-        case AF_INET:
-        {
-            struct sockaddr_in addr;
-            addr.sin_family = AF_INET;
-            addr.sin_port = htons(port);
-
-            if(inet_pton(AF_INET, ip_addr_string, &addr.sin_addr) != 1) 
-            {
-                PyErr_SetString(PyExc_ValueError, "invalid ip address");
-                return 0;
-            }
-
-            int res;
-            Py_BEGIN_ALLOW_THREADS
-            res = picox_connect(s->fd, &addr, sizeof(addr));
-            Py_END_ALLOW_THREADS
-
-            if(res != 0) {
-                PyErr_SetFromErrno(PyExc_OSError);
-                return 0;
-            }
-        } break;
-
-        case AF_INET6:
-        {
-            struct sockaddr_in6 addr;
-            addr.sin6_family = AF_INET6;
-            addr.sin6_port = htons(port);
-
-            if(inet_pton(AF_INET6, ip_addr_string, &addr.sin6_addr) != 1) 
-            {
-                PyErr_SetString(PyExc_ValueError, "invalid ip address");
-                return 0;
-            }
-
-            int res;
-            Py_BEGIN_ALLOW_THREADS
-            res = picox_connect(s->fd, &addr, sizeof(addr));
-            Py_END_ALLOW_THREADS
-
-            if(res != 0) {
-                PyErr_SetFromErrno(PyExc_OSError);
-                return 0;
-            }
-        } break;
-
-        default:
-        {
-        } break;
     }
 
     Py_RETURN_NONE;
@@ -278,18 +422,42 @@ socket_initobj(PyObject* self, PyObject* args, PyObject* kwds)
     s->type = SOCK_STREAM;
     s->proto = 0;
 
-    if(!PyArg_ParseTuple(args, "Oiii", &s->stack, &s->family, &s->type, &s->proto))
+    PyObject* fdobj = NULL;
+    int fd = -1;
+
+    if(!PyArg_ParseTuple(args, "Oiii|O", &s->stack, &s->family, &s->type, &s->proto, &fdobj))
         return -1;
 
-    Py_INCREF(s->stack);
-
-    s->fd = picox_msocket(((struct stack_object*)s->stack)->stack, s->family, s->type, s->proto);
-    if(s->fd == -1)
+    /* Create a new socket */
+    if(fdobj == NULL || fdobj == Py_None)
     {
-        PyErr_SetFromErrno(PyExc_OSError);
-        return -1;
+        s->fd = picox_msocket(((struct stack_object*)s->stack)->stack, s->family, s->type, s->proto);
+        if(s->fd == -1)
+        {
+            PyErr_SetFromErrno(PyExc_OSError);
+            return -1;
+        }
+    }
+    /* Create a socket from an existing file descriptor */
+    else 
+    {
+        if (PyFloat_Check(fdobj)) {
+            PyErr_SetString(PyExc_TypeError, "integer argument expected, got float");
+            return -1;
+        }
+
+        fd = PyLong_AsLong(fdobj);
+        if (PyErr_Occurred())
+            return -1;
+        if (fd == -1) {
+            PyErr_SetString(PyExc_ValueError, "invalid file descriptor");
+            return -1;
+        }
+
+        s->fd = fd;
     }
 
+    Py_INCREF(s->stack);
     return 0;
 }
 
@@ -378,20 +546,22 @@ static PyTypeObject socket_type = {
 };
 
  
+static PyObject* 
+new_socket_from_fd(stack_object* stack, int family, int type, int proto, int fd)
+{
+    PyObject* socket_args = Py_BuildValue("Oiiii", (PyObject*)stack, family, type, proto, fd);
+    if(!socket_args) {
+        return NULL;
+    }
 
+    // Instantiate a socket by calling the constructor of the socket type
+    PyObject* socket = PyObject_CallObject((PyObject*)&socket_type, socket_args);
 
-static PyMethodDef pycox_methods[] = {
-    {NULL, NULL, 0, NULL}        /* Sentinel */
-};
+    // Release arguments
+    Py_DECREF(socket_args);
 
-static struct PyModuleDef pycox_module = {
-    PyModuleDef_HEAD_INIT,
-    "_pycoxnet",   /* name of module */
-    NULL,          /* module documentation, may be NULL */
-    -1,            /* size of per-interpreter state of the module,
-                      or -1 if the module keeps state in global variables. */
-    pycox_methods
-};
+    return socket;
+}
 
 static void 
 stack_dealloc(stack_object* self)
@@ -663,6 +833,9 @@ stack_socket(stack_object* self, PyObject *args, PyObject *kwds)
 
     // Prepare arguments for the socket constructor
     PyObject* socket_args = Py_BuildValue("Oiii", (PyObject*)self, family, type, proto);
+    if(!socket_args) {
+        return NULL;
+    }
 
     // Instantiate a socket by calling the constructor of the socket type
     PyObject* socket = PyObject_CallObject((PyObject*)&socket_type, socket_args);
@@ -748,6 +921,19 @@ static PyTypeObject stack_type = {
     0,                                          /* tp_del */
     0,                                          /* tp_version_tag */
     (destructor)stack_finalize,                 /* tp_finalize */
+};
+
+static PyMethodDef pycox_methods[] = {
+    {NULL, NULL, 0, NULL}        /* Sentinel */
+};
+
+static struct PyModuleDef pycox_module = {
+    PyModuleDef_HEAD_INIT,
+    "_pycoxnet",   /* name of module */
+    NULL,          /* module documentation, may be NULL */
+    -1,            /* size of per-interpreter state of the module,
+                      or -1 if the module keeps state in global variables. */
+    pycox_methods
 };
 
 PyMODINIT_FUNC
