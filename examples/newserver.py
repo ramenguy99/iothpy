@@ -17,19 +17,11 @@ addr = pycoxnet.inet_pton(pycoxnet.AF_INET, sys.argv[2])
 
 stack.ipaddr_add(pycoxnet.AF_INET, addr, prefix, ifindex)
 
-print("ipaddr done");
-
 sock = stack.socket(pycoxnet.AF_INET, pycoxnet.SOCK_STREAM)
-
-print("socket done")
 
 sock.bind(('', port))
 
-print("bind done")
-
 sock.listen(1)
-
-print("listen done")
 
 while True:
     (clientsock, address) = sock.accept()

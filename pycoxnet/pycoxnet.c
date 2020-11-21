@@ -303,23 +303,33 @@ sock_accept(PyObject *self, PyObject* unused_args)
 static PyObject *
 sock_recv(PyObject *self, PyObject *args)
 {
-    int fd;
-    int size;
+    socket_object* s = (socket_object*)self;
 
-    if(!PyArg_ParseTuple(args, "ii", &fd, &size))
+    ssize_t recvlen = 0;
+    ssize_t outlen = 0;
+    int flags = 0;
+
+    if(!PyArg_ParseTuple(args, "n|i", &recvlen, &flags))
         return NULL;
 
-    PyObject *buf = PyBytes_FromStringAndSize(NULL, size);
-    int n;
+    PyObject *buf = PyBytes_FromStringAndSize(NULL, recvlen);
+    if(buf == NULL) {
+        return NULL;
+    }
 
-    if((n = picox_read(fd, PyBytes_AsString(buf), size)) <= 0) {
+    Py_BEGIN_ALLOW_THREADS
+    outlen = picox_read(s->fd, PyBytes_AsString(buf), recvlen);
+    Py_END_ALLOW_THREADS
+
+
+    if(outlen <= 0) {
         PyErr_SetString(PyExc_Exception, "failed to read from socket");
         return NULL;
     }
 
-    if(n != size) {
+    if(recvlen != outlen) {
         //Resize the buffer since we read less bytes than expected
-        _PyBytes_Resize(&buf, n);
+        _PyBytes_Resize(&buf, outlen);
     }
 
     return buf;
@@ -328,17 +338,26 @@ sock_recv(PyObject *self, PyObject *args)
 static PyObject *
 sock_send(PyObject *self, PyObject *args) 
 {
-    int fd;
-    const char *message;
+    socket_object* s = (socket_object*)self;
+
     Py_buffer buf;
+    int flags = 0;
 
-    if(!PyArg_ParseTuple(args, "iy*", &fd, &buf))
+    if(!PyArg_ParseTuple(args, "y*|i:send", &buf, &flags))
         return NULL;
-    
-    return PyLong_FromUnsignedLong(picox_write(fd, buf.buf, buf.len));
+
+    ssize_t res;
+    Py_BEGIN_ALLOW_THREADS
+    res = picox_send(s->fd, buf.buf, buf.len, flags);
+    Py_END_ALLOW_THREADS
+
+    if(res == -1) {
+        PyErr_SetFromErrno(PyExc_OSError);
+        return NULL;
+    }
+
+    return PyLong_FromSsize_t(res);
 }
-
-
 
 static PyObject *
 sock_close(PyObject *self, PyObject *args)
