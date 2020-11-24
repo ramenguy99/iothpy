@@ -5,20 +5,24 @@
 #define _GNU_SOURCE
 #endif
 
+
 #include <stdio.h>
 #include <stdlib.h>
-#include <libgen.h>
+#include <unistd.h>
+#include <string.h>
 #include <stdint.h>
-#include <pthread.h>
+#include <sys/socket.h>
+#include <sys/types.h>
+#include <sys/wait.h>
 #include <netinet/in.h>
+#include <pthread.h>
 #include <arpa/inet.h>
-#include <picoxnet.h>
-#include <nlinline+.h>
-NLINLINE_LIBMULTI(picox_)
+
+#include <libioth.h>
 
 typedef struct stack_object {
     PyObject_HEAD
-    struct picox* stack;
+    struct ioth* stack;
 } stack_object;
 
 typedef struct socket_object 
@@ -222,7 +226,7 @@ sock_bind(PyObject *self, PyObject *args)//funziona solo con "" come indirizzo d
 
     int res;
     Py_BEGIN_ALLOW_THREADS
-    res = picox_bind(s->fd, (struct sockaddr*)&addrbuf, addrlen);
+    res = ioth_bind(s->fd, (struct sockaddr*)&addrbuf, addrlen);
     Py_END_ALLOW_THREADS
 
     if(res != 0) {
@@ -249,7 +253,7 @@ sock_listen(PyObject *self, PyObject *args)
 
 
     Py_BEGIN_ALLOW_THREADS
-    res = picox_listen(s->fd, backlog);
+    res = ioth_listen(s->fd, backlog);
     Py_END_ALLOW_THREADS
 
     if(res != 0) {
@@ -274,7 +278,7 @@ sock_accept(PyObject *self, PyObject* unused_args)
 
     int connfd;
     Py_BEGIN_ALLOW_THREADS
-    connfd = picox_accept(s->fd, (struct sockaddr*)&addrbuf, &addrlen);
+    connfd = ioth_accept(s->fd, (struct sockaddr*)&addrbuf, &addrlen);
     Py_END_ALLOW_THREADS
 
     if(connfd == -1) {
@@ -318,7 +322,7 @@ sock_recv(PyObject *self, PyObject *args)
     }
 
     Py_BEGIN_ALLOW_THREADS
-    outlen = picox_read(s->fd, PyBytes_AsString(buf), recvlen);
+    outlen = ioth_read(s->fd, PyBytes_AsString(buf), recvlen);
     Py_END_ALLOW_THREADS
 
 
@@ -348,7 +352,7 @@ sock_send(PyObject *self, PyObject *args)
 
     ssize_t res;
     Py_BEGIN_ALLOW_THREADS
-    res = picox_send(s->fd, buf.buf, buf.len, flags);
+    res = ioth_send(s->fd, buf.buf, buf.len, flags);
     Py_END_ALLOW_THREADS
 
     if(res == -1) {
@@ -365,7 +369,7 @@ sock_close(PyObject *self, PyObject *args)
     socket_object* s = (socket_object*)self;
     if(s->fd != -1)
     {
-        int res = picox_close(s->fd);
+        int res = ioth_close(s->fd);
         s->fd = -1;
         if(res < 0 && errno != ECONNRESET) {
             return NULL;
@@ -390,10 +394,11 @@ sock_connect(PyObject *self, PyObject *args)
 
     int res;
     Py_BEGIN_ALLOW_THREADS
-    res = picox_connect(s->fd, (struct sockaddr*)&addrbuf, addrlen);
+    res = ioth_connect(s->fd, (struct sockaddr*)&addrbuf, addrlen);
     Py_END_ALLOW_THREADS
 
     if(res != 0) {
+        printf("%d errno\n", errno);
         PyErr_SetFromErrno(PyExc_OSError);
         return 0;
     }
@@ -450,7 +455,7 @@ socket_initobj(PyObject* self, PyObject* args, PyObject* kwds)
     /* Create a new socket */
     if(fdobj == NULL || fdobj == Py_None)
     {
-        s->fd = picox_msocket(((struct stack_object*)s->stack)->stack, s->family, s->type, s->proto);
+        s->fd = ioth_msocket(((struct stack_object*)s->stack)->stack, s->family, s->type, s->proto);
         if(s->fd == -1)
         {
             PyErr_SetFromErrno(PyExc_OSError);
@@ -503,7 +508,7 @@ socket_finalize(socket_object* s)
 
     Py_DECREF(s->stack);
     if (s->fd != -1) {
-        picox_close(s->fd);
+        ioth_close(s->fd);
         s->fd = -1;
     }
 
@@ -601,9 +606,9 @@ stack_finalize(stack_object* self)
     /* Save the current exception, if any. */
     PyErr_Fetch(&error_type, &error_value, &error_traceback);
 
-    /* Delete the picox network stack */
+    /* Delete the ioth network stack */
     if(self->stack) {
-        /*picox_delstack(self->stack);*/
+        /*ioth_delstack(self->stack);*/
     }
 
     /* Restore the saved exception. */
@@ -649,7 +654,16 @@ stack_initobj(PyObject* self, PyObject* args, PyObject* kwds)
         return -1;
     }
 
-    s->stack = picox_newstack(vdeurl);
+    char* arr[2];
+    arr[0] = vdeurl;
+    arr[1] = NULL;
+
+    printf("%s vdeurln\n", arr[0]);
+
+    s->stack = ioth_newstackv("picox", arr);
+
+    printf("test = %p", calloc(5,1));
+    printf("stack = %p\n", s->stack);
 
     return 0;
 }
@@ -687,7 +701,7 @@ stack_if_nameindex(stack_object* self)
         return NULL;
 
 
-    struct picox_if_nameindex *ni = picox_if_nameindex(self->stack);
+    struct ioth_if_nameindex *ni = ioth_if_nameindex(self->stack);
     if(!ni) {
         Py_DECREF(list);
         PyErr_SetString(PyExc_Exception, "Unable to retrieve interfaces");
@@ -701,13 +715,13 @@ stack_if_nameindex(stack_object* self)
         if(!ni_tuple || PyList_Append(list, ni_tuple) == -1) {
             Py_XDECREF(ni_tuple);
             Py_DECREF(list);
-            picox_if_freenameindex(self->stack, ni);
+            ioth_if_freenameindex(self->stack, ni);
             return NULL;
         }
         Py_DECREF(ni_tuple);
     }
 
-    picox_if_freenameindex(self->stack, ni);
+    ioth_if_freenameindex(self->stack, ni);
 
     return list;
 #endif
@@ -731,7 +745,7 @@ stack_if_nametoindex(stack_object* self, PyObject* args)
     if(!PyArg_ParseTuple(args, "O&:if_nametoindex", PyUnicode_FSConverter, &oname))
         return NULL;
 
-    unsigned long index = picox_if_nametoindex(self->stack, PyBytes_AS_STRING(oname));
+    unsigned long index = ioth_if_nametoindex(self->stack, PyBytes_AS_STRING(oname));
     Py_DECREF(oname);
 
     // TODO: nlinline returns -1 on error instead of 0 (not in line with the man pages)
@@ -767,7 +781,7 @@ stack_if_indextoname(stack_object* self, PyObject* arg)
         return NULL;
     
     char name[IF_NAMESIZE + 1];
-    if(picox_indextoname(self->stack, index, name) == NULL)
+    if(ioth_indextoname(self->stack, index, name) == NULL)
     {
         PyErr_SetString(PyExc_Exception, "no interface with this index");
         return NULL;
@@ -821,7 +835,7 @@ stack_ipaddr_add(stack_object* self, PyObject* args)
         return NULL;
     }
 
-    if(picox_ipaddr_add(self->stack, af, packed_ip.buf, prefix_len, if_index) < 0) {
+    if(ioth_ipaddr_add(self->stack, af, packed_ip.buf, prefix_len, if_index) < 0) {
         PyErr_SetString(PyExc_Exception, "failed to add ip address to interface");
         PyBuffer_Release(&packed_ip);
         return NULL;

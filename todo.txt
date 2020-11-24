@@ -1,0 +1,7 @@
+_Parametro string per costruttore stack
+_recvmsg recvfrom recvmsgfrom sendmsg sendto sendfrom
+_poll e funzioni necessariei
+
+cose future assai:
+_ioctl fcntl getsockopt etc...
+_rename di tutte le robe

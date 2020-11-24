@@ -7,8 +7,8 @@ find_package(PythonExtensions REQUIRED)
 include(CheckIncludeFile)
 
 # Check for picoxnet library and header files
-set(LIBS_REQUIRED picoxnet)
-set(HEADERS_REQUIRED picoxnet.h)
+set(LIBS_REQUIRED ioth)
+set(HEADERS_REQUIRED libioth.h)
 
 foreach(THISLIB IN LISTS LIBS_REQUIRED)
   find_library(LIB${THISLIB}_OK ${THISLIB})
@@ -26,7 +26,7 @@ endforeach(HEADER)
 
 # Target for python extension module
 add_library(_pycoxnet MODULE pycoxnet/pycoxnet.c)
-target_link_libraries(_pycoxnet -lpicoxnet)
+target_link_libraries(_pycoxnet -lioth)
 python_extension_module(_pycoxnet)
 
 install(TARGETS _pycoxnet LIBRARY DESTINATION pycoxnet)
