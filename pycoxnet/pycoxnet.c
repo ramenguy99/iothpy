@@ -398,7 +398,6 @@ sock_connect(PyObject *self, PyObject *args)
     Py_END_ALLOW_THREADS
 
     if(res != 0) {
-        printf("%d errno\n", errno);
         PyErr_SetFromErrno(PyExc_OSError);
         return 0;
     }
@@ -647,23 +646,24 @@ stack_initobj(PyObject* self, PyObject* args, PyObject* kwds)
 {
     stack_object* s = (stack_object*)self;
     
+    char* stack_name = NULL;
     char* vdeurl = NULL;
     
     /* Parse an optional string */
-    if(!PyArg_ParseTuple(args, "|s", &vdeurl)) {
+    if(!PyArg_ParseTuple(args, "s|s", &stack_name, &vdeurl)) {
         return -1;
     }
 
-    char* arr[2];
-    arr[0] = vdeurl;
-    arr[1] = NULL;
+    //Transform the vde url in something like vde0=vde:///tmp/mysw
+    //only if the stack is picox
+    char buf[1024];
+    if(vdeurl && strcmp(stack_name, "picox") == 0)
+    {
+        snprintf(buf, sizeof(buf), "vde0=%s", vdeurl);
+        vdeurl = buf;
+    }
 
-    printf("%s vdeurln\n", arr[0]);
-
-    s->stack = ioth_newstackv("picox", arr);
-
-    printf("test = %p", calloc(5,1));
-    printf("stack = %p\n", s->stack);
+    s->stack = ioth_newstacki(stack_name, vdeurl);
 
     return 0;
 }

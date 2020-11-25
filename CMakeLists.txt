@@ -7,6 +7,7 @@ find_package(PythonExtensions REQUIRED)
 include(CheckIncludeFile)
 
 # Check for picoxnet library and header files
+set(CMAKE_BUILD_TYPE Debug)
 set(LIBS_REQUIRED ioth)
 set(HEADERS_REQUIRED libioth.h)
 
