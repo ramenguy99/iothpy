@@ -3,7 +3,7 @@
 import sys
 import pycoxnet
 import time
-import fileinput
+import select
 
 if(len(sys.argv) != 6):
     name = sys.argv[0]
@@ -22,12 +22,26 @@ stack.ipaddr_add(pycoxnet.AF_INET, addr, prefix, ifindex)
 sock = stack.socket(pycoxnet.AF_INET, pycoxnet.SOCK_STREAM)
 
 sock.connect((sys.argv[4], port))
-time.sleep(2)
-while True:
-	message = input("message : ")
 
-	sock.send(message.encode())
-	data = sock.recv(1024)
+print("Connected to server at", (sys.argv[4], port))
 
-	print("received ", repr(data))
+poll_obj = select.poll()
+poll_obj.register(sock, select.POLLIN);
+poll_obj.register(sys.stdin, select.POLLIN)
+
+while(True):
+    events = poll_obj.poll();
+    for fd, event in events:
+        if(fd == sock.fileno()):
+            message = sock.recv(1024)
+            if(message):
+                print(message.decode())
+            else:
+                break
+        if(fd == sys.stdin.fileno()):
+            message = input().rstrip()
+            if(message):
+                sock.send(message.encode())
+            else:
+                break
 

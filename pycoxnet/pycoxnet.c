@@ -326,7 +326,7 @@ sock_recv(PyObject *self, PyObject *args)
     Py_END_ALLOW_THREADS
 
 
-    if(outlen <= 0) {
+    if(outlen < 0) {
         PyErr_SetString(PyExc_Exception, "failed to read from socket");
         return NULL;
     }
@@ -405,6 +405,13 @@ sock_connect(PyObject *self, PyObject *args)
     Py_RETURN_NONE;
 }
 
+static PyObject *
+sock_fileno(PyObject *self, PyObject *args)
+{
+    socket_object* s = (socket_object*)self;
+    return PyLong_FromLong(s->fd);
+}
+
 static PyMethodDef socket_methods[] = 
 {
     {"bind",    sock_bind,    METH_O,       "bind addr"},
@@ -414,6 +421,7 @@ static PyMethodDef socket_methods[] =
     {"accept",  sock_accept,  METH_NOARGS,  "accept connection on socket identified by fd"},
     {"recv",    sock_recv,    METH_VARARGS, "recv size bytes as string from socket indentified by fd"},
     {"send",    sock_send,    METH_VARARGS, "send string to socket indentified by fd"}, 
+    {"fileno",    sock_fileno,    METH_NOARGS, "returns the socket fd"}, 
 
     {NULL, NULL} /* sentinel */
 };

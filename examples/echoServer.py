@@ -3,6 +3,7 @@
 import sys
 import pycoxnet
 import time
+import threading
 
 if(len(sys.argv) != 5):
     name = sys.argv[0]
@@ -24,12 +25,18 @@ sock.bind(('', port))
 
 sock.listen(1)
 
-conn, addr = sock.accept()
-print("connected by ", addr)
+def handle(conn, addr):
+    while True:
+        data = conn.recv(1024)
+        if not data:
+            print("Connection closed by", addr)
+            break
+        print("Got:", data.decode(), "from", addr)
+        conn.send(data)
+
 while True:
-	data = conn.recv(1024)
-	print(repr(data))
-	if not data:
-    		break
-#	time.sleep(2)
-	conn.send(data)
+    conn, addr = sock.accept()
+    print("New connection by ", addr)
+    t = threading.Thread(target = handle, args=(conn, addr), daemon=True)
+    t.start()
+
