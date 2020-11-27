@@ -412,6 +412,121 @@ sock_fileno(PyObject *self, PyObject *args)
     return PyLong_FromLong(s->fd);
 }
 
+static PyObject *
+sock_getsockopt(PyObject *self, PyObject *args)
+{
+    socket_object* s = (socket_object*)self;
+    int level;
+    int optname;
+    int res;
+
+    PyObject *buf;
+    socklen_t buflen = 0;
+
+    if (!PyArg_ParseTuple(args, "ii|i:getsockopt",
+                          &level, &optname, &buflen))
+        return NULL;
+
+    if (buflen <= 0 || buflen > 1024) {
+        PyErr_SetString(PyExc_OSError, "getsockopt buflen out of range");
+        return NULL;
+    }
+
+    if (buflen == 0) {
+        int flag = 0;
+        socklen_t flagsize = sizeof(flag);
+
+        res = ioth_getsockopt(s->fd, level, optname, (void *)&flag, &flagsize);
+        if (res < 0) {
+            PyErr_SetFromErrno(PyExc_OSError);
+            return NULL;
+        }
+        
+        return PyLong_FromLong(flag);
+    }
+
+    buf = PyBytes_FromStringAndSize((char *)NULL, buflen);
+    if (buf == NULL)
+        return NULL;
+
+    res = ioth_getsockopt(s->fd, level, optname, (void *)PyBytes_AS_STRING(buf), &buflen);
+    if (res < 0) {
+        PyErr_SetFromErrno(PyExc_OSError);
+        return NULL;
+    }
+    _PyBytes_Resize(&buf, buflen);
+    return buf;
+}
+
+static PyObject *
+sock_setsockopt(PyObject* self, PyObject *args)
+{
+    socket_object* s = (socket_object*)self;
+
+    int level;
+    int optname;
+    int res;
+    Py_buffer optval;
+    int flag;
+    unsigned int optlen;
+    PyObject *none;
+
+   /* setsockopt(level, opt, flag) */
+    if (PyArg_ParseTuple(args, "iii:setsockopt", &level, &optname, &flag)) {
+        res = ioth_setsockopt(s->fd, level, optname, (char*)&flag, sizeof flag);
+        goto done;
+    }
+
+    PyErr_Clear();
+
+    /* setsockopt(level, opt, None, flag) */
+    if (PyArg_ParseTuple(args, "iiO!I:setsockopt",
+                         &level, &optname, Py_TYPE(Py_None), &none, &optlen)) {
+        assert(sizeof(socklen_t) >= sizeof(unsigned int));
+        res = ioth_setsockopt(s->fd, level, optname, NULL, (socklen_t)optlen);
+        goto done;
+    }
+
+    PyErr_Clear();
+    /* setsockopt(level, opt, buffer) */
+    if (!PyArg_ParseTuple(args, "iiy*:setsockopt", &level, &optname, &optval))
+        return NULL;
+
+    res = ioth_setsockopt(s->fd, level, optname, optval.buf, optval.len);
+    PyBuffer_Release(&optval);
+
+done:
+    if (res < 0) {
+        PyErr_SetFromErrno(PyExc_OSError);
+        return NULL;
+    }
+
+    Py_RETURN_NONE;
+}
+
+static PyObject *
+sock_shutdown(PyObject *self, PyObject *arg)
+{
+    socket_object* s = (socket_object*)self;
+
+    int how;
+    int res;
+
+    how = _PyLong_AsInt(arg);
+    if (how == -1 && PyErr_Occurred())
+        return NULL;
+
+    Py_BEGIN_ALLOW_THREADS
+    res = ioth_shutdown(s->fd, how);
+    Py_END_ALLOW_THREADS
+
+    if (res < 0) {
+        PyErr_SetFromErrno(PyExc_OSError);
+        return NULL;
+    }
+    Py_RETURN_NONE;
+}
+
 static PyMethodDef socket_methods[] = 
 {
     {"bind",    sock_bind,    METH_O,       "bind addr"},
@@ -421,7 +536,11 @@ static PyMethodDef socket_methods[] =
     {"accept",  sock_accept,  METH_NOARGS,  "accept connection on socket identified by fd"},
     {"recv",    sock_recv,    METH_VARARGS, "recv size bytes as string from socket indentified by fd"},
     {"send",    sock_send,    METH_VARARGS, "send string to socket indentified by fd"}, 
-    {"fileno",    sock_fileno,    METH_NOARGS, "returns the socket fd"}, 
+    {"fileno",  sock_fileno,    METH_NOARGS, "returns the socket fd"}, 
+    {"getsockopt", sock_getsockopt, METH_VARARGS, "get socket option"},
+    {"setsockopt", sock_setsockopt, METH_VARARGS, "set socket option"},
+    {"shutdown", sock_shutdown, METH_O, "shutdown the socket"},
+
 
     {NULL, NULL} /* sentinel */
 };
