@@ -213,7 +213,7 @@ get_sockaddr_from_tuple(char* func_name, socket_object* s, PyObject* args, struc
 
 //Socket methods
 static PyObject *
-sock_bind(PyObject *self, PyObject *args)//funziona solo con "" come indirizzo di bind
+sock_bind(PyObject *self, PyObject *args)
 {
     socket_object* s = (socket_object*)self;
 
@@ -363,6 +363,59 @@ sock_send(PyObject *self, PyObject *args)
     return PyLong_FromSsize_t(res);
 }
 
+PyDoc_STRVAR(sendto_doc,
+"sendto(data[, flags], address) -> count\n\
+\n\
+Like send(data, flags) but allows specifying the destination address.\n\
+For IP sockets, the address is a pair (hostaddr, port).");
+
+static PyObject *
+sock_sendto(PyObject *self, PyObject *args)
+{
+    socket_object* s = (socket_object*)self;
+    Py_buffer pbuf;
+    PyObject *addro;
+    Py_ssize_t arglen;
+
+    int flags;
+
+    flags = 0;
+    arglen = PyTuple_Size(args);
+
+    switch(arglen) {
+        case 2:
+            if(!PyArg_ParseTuple(args, "y*O:sendto", &pbuf, &addro))
+                return NULL;
+            break;
+        case 3:
+            if(!PyArg_ParseTuple(args, "y*iO:sendto", &pbuf, &flags, &addro))
+                return NULL;
+            break;
+        default:
+            PyErr_Format(PyExc_TypeError, "sendto() takes 2 or 3 arguments (%zd given)", arglen);
+            return NULL;
+
+    }
+
+
+    struct sockaddr_storage addrbuf;
+    socklen_t addrlen;
+    if(!get_sockaddr_from_tuple("sendto", s, addro, (struct sockaddr*)&addrbuf, &addrlen))
+        return NULL;
+    
+    ssize_t res;
+    Py_BEGIN_ALLOW_THREADS
+    res = ioth_sendto(s->fd, pbuf.buf, pbuf.len, flags, (struct sockaddr*)&addrbuf, addrlen);
+    Py_END_ALLOW_THREADS
+
+    if(res == -1){
+        PyErr_SetFromErrno(PyExc_OSError);
+        return NULL;
+    }
+
+    return PyLong_FromSsize_t(res);
+}
+
 static PyObject *
 sock_close(PyObject *self, PyObject *args)
 {
@@ -422,6 +475,7 @@ static PyMethodDef socket_methods[] =
     {"recv",    sock_recv,    METH_VARARGS, "recv size bytes as string from socket indentified by fd"},
     {"send",    sock_send,    METH_VARARGS, "send string to socket indentified by fd"}, 
     {"fileno",    sock_fileno,    METH_NOARGS, "returns the socket fd"}, 
+    {"sendto", sock_sendto, METH_VARARGS, sendto_doc},
 
     {NULL, NULL} /* sentinel */
 };
