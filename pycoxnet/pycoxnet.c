@@ -211,6 +211,26 @@ get_sockaddr_from_tuple(char* func_name, socket_object* s, PyObject* args, struc
     return 1;
 }
 
+static int
+getsockaddrlen(socket_object *s, socklen_t *len_ret)
+{
+    switch(s->family){
+        case AF_INET:
+        {
+            *len_ret = sizeof (struct sockaddr_in);
+            return 1;
+        }
+        case AF_INET6:
+        {
+            *len_ret = sizeof (struct sockaddr_in6);
+            return 1;
+        }
+        default:
+            PyErr_SetString(PyExc_OSError, "getsockaddrlen: bad family");
+            return 0;
+    }
+}
+
 //Socket methods
 static PyObject *
 sock_bind(PyObject *self, PyObject *args)
@@ -416,6 +436,88 @@ sock_sendto(PyObject *self, PyObject *args)
     return PyLong_FromSsize_t(res);
 }
 
+PyDoc_STRVAR(recvfrom_doc,
+"recvfrom(buffersize[, flags]) -> (data, address info)\n\
+\n\
+Like recv(buffersize, flags) but also return the sender's address info.");
+
+static PyObject*
+sock_recvfrom(PyObject *self, PyObject *args){
+    socket_object* s = (socket_object*)self;
+
+    PyObject *ret = NULL;
+    int flags = 0;
+    ssize_t recvlen, outlen;
+
+    if (!PyArg_ParseTuple(args, "n|i:recvfrom", &recvlen, &flags)){
+        return NULL;
+    }
+
+    if (recvlen < 0) {
+        PyErr_SetString(PyExc_ValueError,
+                        "negative buffersize in recvfrom");
+        return NULL;
+    }
+    
+    PyObject *buf = PyBytes_FromStringAndSize(NULL, recvlen);
+
+    if (buf == NULL){
+        return NULL;
+    }
+
+    // printf("after buf\n");
+    struct sockaddr_storage addrbuf;
+    socklen_t addrlen;
+
+    // if(!getsockaddrlen(s, &addrlen)){
+    //     PyErr_SetString(PyExc_Exception, "failed to get sockaddrlen");
+    //     Py_XDECREF(buf);
+    //     return NULL;
+    // }
+
+    addrlen = sizeof(struct sockaddr_storage);
+    memset(&addrbuf, 0, sizeof(struct sockaddr_storage));
+
+    Py_BEGIN_ALLOW_THREADS
+    outlen = ioth_recvfrom(s->fd, PyBytes_AsString(buf), (int)recvlen, flags, (struct sockaddr*)&addrbuf, &addrlen);
+    Py_END_ALLOW_THREADS
+
+    if(outlen < 0) {
+        PyErr_SetString(PyExc_Exception, "failed to read from socket");
+        goto finally;
+    }
+
+    struct sockaddr_in *sin = (struct sockaddr_in*)&addrbuf;
+    unsigned char *ip = (unsigned char*)&sin->sin_addr.s_addr;
+    printf("c ip : %d %d %d %d\n", ip[0], ip[1], ip[2], ip[3]);
+    
+    PyObject* addr = make_sockaddr((struct sockaddr*)&addrbuf, addrlen);
+    if(addr == NULL){
+        PyErr_SetString(PyExc_Exception, "failed to read from socket");
+        goto finally;
+    }
+    
+    if (outlen != recvlen) {
+        /* We did not read as many bytes as we anticipated, resize the
+           string if possible and be successful. */
+           printf("before resize\n");
+        if (_PyBytes_Resize(&buf, outlen) < 0)
+            /* Oopsy, not so successful after all. */
+            goto finally;
+    }
+
+
+    ret = PyTuple_Pack(2, buf, addr);
+    printf("after pack\n");
+
+finally:
+    printf("before decref\n");
+    Py_XDECREF(buf);
+    Py_XDECREF(addr);
+    printf("after decref\n");
+    return ret;
+}
+
 static PyObject *
 sock_close(PyObject *self, PyObject *args)
 {
@@ -588,6 +690,7 @@ static PyMethodDef socket_methods[] =
     {"listen",  sock_listen,  METH_VARARGS, "start listen on socket identified by fd"},
     {"accept",  sock_accept,  METH_NOARGS,  "accept connection on socket identified by fd"},
     {"recv",    sock_recv,    METH_VARARGS, "recv size bytes as string from socket indentified by fd"},
+    {"recvfrom", sock_recvfrom, METH_VARARGS, recvfrom_doc},
     {"send",    sock_send,    METH_VARARGS, "send string to socket indentified by fd"},  
     {"sendto", sock_sendto, METH_VARARGS, sendto_doc},
     {"fileno",  sock_fileno,    METH_NOARGS, "returns the socket fd"}, 
