@@ -34,7 +34,7 @@ def handle(conn, addr):
         if not data:
             print("Connection closed by", addr)
             break
-        print("Got:", data.decode(), "from", sender)
+        print("Got:", data.decode(), "from", addr)
         conn.send(data)
 
 while True:
