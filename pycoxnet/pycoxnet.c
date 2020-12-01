@@ -283,6 +283,7 @@ sock_accept(PyObject *self, PyObject* unused_args)
 
     if(connfd == -1) {
         PyErr_SetFromErrno(PyExc_OSError);
+        return NULL;
     }
 
     PyObject* sock = new_socket_from_fd((stack_object*)s->stack, s->family, s->type, s->proto, connfd);
@@ -858,7 +859,6 @@ stack_getstack(stack_object* self)
     return PyLong_FromVoidPtr(self->stack);
 }
 
-
 PyDoc_STRVAR(if_nameindex_doc, "if_nameindex()\n\
 \n\
 Returns a list of network interface information (index, name) tuples.");
@@ -973,6 +973,130 @@ stack_if_indextoname(stack_object* self, PyObject* arg)
 }
 
 
+PyDoc_STRVAR(linksetupdown_doc, "linksetupdown(index, up_down)\n\
+\n\
+Turn the interface at the specified index up (updown == True) or down (updown == False)");
+
+static PyObject*
+stack_linksetupdown(stack_object* self, PyObject* args)
+{
+    if(!self->stack) 
+    {
+        PyErr_SetString(PyExc_Exception, "Uninitialized stack");
+        return NULL;
+    }
+
+    int index, updown;
+    if(!PyArg_ParseTuple(args, "ip", &index, &updown))
+        return NULL;
+
+    int res = ioth_linksetupdown(self->stack, index, updown);
+
+    if(res == -1) {
+        PyErr_SetString(PyExc_Exception, "no interface with this name");
+        return NULL;
+    }
+
+    Py_RETURN_NONE;
+}
+
+
+static int
+check_ip_buffer(int family, Py_buffer addr)
+{
+    /* Check that the length of the address matches the family */
+    if (family == AF_INET) {
+        if (addr.len != sizeof(struct in_addr)) {
+            return 0;
+        }
+    } else if (family == AF_INET6) {
+        if (addr.len != sizeof(struct in6_addr)) {
+            return 0;
+        }
+    } else {
+        return 0;
+    }
+
+    return 1;
+}
+
+PyDoc_STRVAR(iproute_add_doc, "iproute_add(family, dst_addr, dst_prefixlen, gw_addr)\n\
+\n\
+Add a static route to dst_addr/dst_prefixlen network through the gateway gw_addr. If dst_addr == None it adds a default route");
+
+
+static PyObject*
+stack_iproute_add(stack_object* self, PyObject* args)
+{
+    if(!self->stack) 
+    {
+        PyErr_SetString(PyExc_Exception, "Uninitialized stack");
+        return NULL;
+    }
+
+    int family;
+    PyObject* dst_addr_obj;
+    Py_buffer dst_addr, gw_addr;
+    int prefix_len;
+
+    /* Parse arguments */
+    if(!PyArg_ParseTuple(args, "iOiy*:ipaddr_add", &family, &dst_addr_obj, &prefix_len, &gw_addr)) {
+        return NULL;
+    }
+
+    /* Check family */
+    if(family != AF_INET && family != AF_INET6) {
+        PyErr_Format(PyExc_ValueError, "unknown address family %d", family);
+        PyBuffer_Release(&gw_addr);
+        return NULL;
+    }
+
+    /* Check gw address length */
+    if(!check_ip_buffer(family, gw_addr)) {
+       PyErr_SetString(PyExc_ValueError, "invalid length of dst_addr");
+       PyBuffer_Release(&gw_addr);
+       return NULL;
+    }
+
+    /* Fill dst_addr if not None */
+    dst_addr.buf = 0;
+    if(dst_addr_obj != Py_None) {
+        if (PyObject_GetBuffer(dst_addr_obj, &dst_addr, PyBUF_SIMPLE) != 0) {
+            PyErr_SetString(PyExc_Exception, "dst_addr must be bytes-like object or None");
+            PyBuffer_Release(&gw_addr);
+            return NULL;
+        }
+        if (!PyBuffer_IsContiguous(&dst_addr, 'C')) {
+            PyErr_SetString(PyExc_Exception, "dst_addr must be a contiguous buffer");
+            PyBuffer_Release(&dst_addr);
+            PyBuffer_Release(&gw_addr);
+            return NULL;
+        }
+
+        /* Check dest address length */
+        if(!check_ip_buffer(family, dst_addr)) {
+           PyErr_SetString(PyExc_ValueError, "invalid length of dst_addr");
+           PyBuffer_Release(&dst_addr);
+           PyBuffer_Release(&gw_addr);
+           return NULL;
+        }
+    }
+
+    if(ioth_iproute_add(self->stack, family, dst_addr.buf, prefix_len, gw_addr.buf) < 0) {
+        PyErr_SetString(PyExc_Exception, "failed to add ip route to interface");
+        if(dst_addr.buf)
+            PyBuffer_Release(&dst_addr);
+        PyBuffer_Release(&gw_addr);
+        return NULL;       
+    }
+
+    if(dst_addr.buf)
+        PyBuffer_Release(&dst_addr);
+    PyBuffer_Release(&gw_addr);
+
+    Py_RETURN_NONE;
+}
+
 PyDoc_STRVAR(ipaddr_add_doc, "ipaddr_add(family, addr, prefix_len, if_index)\n\
 \n\
 Add an IP address to the interface if_index.\n\
@@ -996,24 +1120,19 @@ stack_ipaddr_add(stack_object* self, PyObject* args)
     if(!PyArg_ParseTuple(args, "iy*ii:ipaddr_add", &af, &packed_ip, &prefix_len, &if_index)) {
         return NULL;
     }
-
-    /* Check that the length of the address matches the family */
-    if (af == AF_INET) {
-        if (packed_ip.len != sizeof(struct in_addr)) {
-            PyErr_SetString(PyExc_ValueError, "invalid length of packed IP address string");
-            PyBuffer_Release(&packed_ip);
-            return NULL;
-        }
-    } else if (af == AF_INET6) {
-        if (packed_ip.len != sizeof(struct in6_addr)) {
-            PyErr_SetString(PyExc_ValueError, "invalid length of packed IP address string");
-            PyBuffer_Release(&packed_ip);
-            return NULL;
-        }
-    } else {
+   
+    /* Check family */
+    if(af != AF_INET && af != AF_INET6) {
         PyErr_Format(PyExc_ValueError, "unknown address family %d", af);
         PyBuffer_Release(&packed_ip);
         return NULL;
+    }
+
+    /* Check address length */
+    if(!check_ip_buffer(af, packed_ip)) {
+       PyErr_SetString(PyExc_ValueError, "invalid length of ip address");
+       PyBuffer_Release(&packed_ip);
+       return NULL;
     }
 
     if(ioth_ipaddr_add(self->stack, af, packed_ip.buf, prefix_len, if_index) < 0) {
@@ -1068,8 +1187,9 @@ static PyMethodDef stack_methods[] = {
     {"if_nametoindex", (PyCFunction)stack_if_nametoindex, METH_VARARGS, if_nametoindex_doc},
     {"if_indextoname", (PyCFunction)stack_if_indextoname, METH_O, if_indextoname_doc},
 
+    {"linksetupdown", (PyCFunction)stack_linksetupdown, METH_VARARGS, linksetupdown_doc},
     {"ipaddr_add", (PyCFunction)stack_ipaddr_add, METH_VARARGS, ipaddr_add_doc},
-
+    {"iproute_add", (PyCFunction)stack_iproute_add, METH_VARARGS, iproute_add_doc},
     {"socket", (PyCFunction)stack_socket, METH_VARARGS | METH_KEYWORDS, stack_socket_doc},
 
 
