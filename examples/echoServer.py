@@ -30,7 +30,7 @@ sock.listen(1)
 
 def handle(conn, addr):
     while True:
-        data, sender = conn.recv(1024)
+        data = conn.recv(1024)
         if not data:
             print("Connection closed by", addr)
             break
