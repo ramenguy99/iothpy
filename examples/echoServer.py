@@ -10,7 +10,7 @@ if(len(sys.argv) != 5):
     print("Usage: {0} vdeurl ip prefix port\ne,g: {1} vxvde://234.0.0.1 10.0.0.1 24 5000\n\n".format(name, name))
     exit(1)
 
-stack  = pycoxnet.stack("picox", sys.argv[1])
+stack  = pycoxnet.stack("vdestack", sys.argv[1])
 
 prefix = int(sys.argv[3])
 port  = int(sys.argv[4])
@@ -35,11 +35,11 @@ def handle(conn, addr):
             print("Connection closed by", addr)
             break
         print("Got:", data.decode(), "from", sender)
-        conn.sendto(data, addr)
+        conn.send(data)
 
 while True:
     conn, addr = sock.accept()
-    print("New connection by ", addr)
+    print("New connection by {}".format((conn, addr)))
     t = threading.Thread(target = handle, args=(conn, addr), daemon=True)
     t.start()
 

@@ -2,6 +2,9 @@
 
 import sys
 import pycoxnet
+import time
+import threading
+import datetime
 
 if(len(sys.argv) != 5):
     name = sys.argv[0]
@@ -17,19 +20,12 @@ addr = pycoxnet.inet_pton(pycoxnet.AF_INET, sys.argv[2])
 
 stack.ipaddr_add(pycoxnet.AF_INET, addr, prefix, ifindex)
 
-sock = stack.socket(pycoxnet.AF_INET, pycoxnet.SOCK_STREAM)
+sock = stack.socket(pycoxnet.AF_INET, pycoxnet.SOCK_DGRAM)
 
 sock.bind(('', port))
 
-sock.listen(1)
-
-while True:
-    (clientsock, address) = sock.accept()
-    msg = clientsock.recv(1024)
-    clientsock.close()
-    print("New connnection: {0}".format(address))
-    print(msg)
-
-
-
-
+while(True):
+    tempVal, addr = sock.recvfrom(1024);
+    print("Temp at is %s in %s"%(tempVal.decode(), addr))
+    response = "Received at %s is %s"%(addr, datetime.datetime.now())
+    sock.sendto(response.encode(), addr)

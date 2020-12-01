@@ -294,7 +294,7 @@ sock_accept(PyObject *self, PyObject* unused_args)
 
 
     struct sockaddr_storage addrbuf;
-    socklen_t addrlen;
+    socklen_t addrlen = sizeof(struct sockaddr_storage);
 
     int connfd;
     Py_BEGIN_ALLOW_THREADS
@@ -487,10 +487,6 @@ sock_recvfrom(PyObject *self, PyObject *args){
         PyErr_SetString(PyExc_Exception, "failed to read from socket");
         goto finally;
     }
-
-    struct sockaddr_in *sin = (struct sockaddr_in*)&addrbuf;
-    unsigned char *ip = (unsigned char*)&sin->sin_addr.s_addr;
-    printf("c ip : %d %d %d %d\n", ip[0], ip[1], ip[2], ip[3]);
     
     PyObject* addr = make_sockaddr((struct sockaddr*)&addrbuf, addrlen);
     if(addr == NULL){
@@ -501,7 +497,6 @@ sock_recvfrom(PyObject *self, PyObject *args){
     if (outlen != recvlen) {
         /* We did not read as many bytes as we anticipated, resize the
            string if possible and be successful. */
-           printf("before resize\n");
         if (_PyBytes_Resize(&buf, outlen) < 0)
             /* Oopsy, not so successful after all. */
             goto finally;
@@ -509,13 +504,10 @@ sock_recvfrom(PyObject *self, PyObject *args){
 
 
     ret = PyTuple_Pack(2, buf, addr);
-    printf("after pack\n");
 
 finally:
-    printf("before decref\n");
     Py_XDECREF(buf);
     Py_XDECREF(addr);
-    printf("after decref\n");
     return ret;
 }
 
