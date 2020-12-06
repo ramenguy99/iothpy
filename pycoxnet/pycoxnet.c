@@ -924,24 +924,50 @@ stack_initobj(PyObject* self, PyObject* args, PyObject* kwds)
     stack_object* s = (stack_object*)self;
     
     char* stack_name = NULL;
-    char* vdeurl = NULL;
     
+    const char** urls = NULL;
+    const char* single_url_buf[2];
+    const char** multi_url_buf = NULL;
+    PyObject* list = NULL;
+
     /* Parse an optional string */
-    if(!PyArg_ParseTuple(args, "s|s", &stack_name, &vdeurl)) {
-        return -1;
-    }
-
-    //Transform the vde url in something like vde0=vde:///tmp/mysw
-    //only if the stack is picox
-    char buf[1024];
-    if(vdeurl && strcmp(stack_name, "picox") == 0)
+    if(PyArg_ParseTuple(args, "s|s", &stack_name, single_url_buf)) 
     {
-        snprintf(buf, sizeof(buf), "vde0=%s", vdeurl);
-        vdeurl = buf;
+        single_url_buf[1] = 0;
+        urls = single_url_buf;
+    } 
+    else 
+    {
+        /* If not a string we expect a list of strings */
+        PyErr_Clear();
+        if(!PyArg_ParseTuple(args, "s|O;first argument must be a string and second an optional string or list of strings", &stack_name, &list))
+            return -1;
+
+        char* argument_error = "Second argument must be a list of strings";
+        if(!PyList_Check(list)) {
+            PyErr_SetString(PyExc_ValueError, argument_error);
+            return -1;
+        }
+
+        /* Allocate enough space for each string plus the null sentinel */
+        Py_ssize_t len = PyList_Size(list);
+        multi_url_buf = malloc(sizeof(char*) * (len + 1));
+        for(Py_ssize_t i = 0; i < len; i++)
+        {
+            PyObject* string = PyList_GetItem(list, i);
+            if(!PyUnicode_Check(string)) {
+                PyErr_SetString(PyExc_ValueError, argument_error);
+                return -1;
+            }
+            const char* url = PyUnicode_AsUTF8(string);
+            multi_url_buf[i] = url;
+        }
+        multi_url_buf[len] = 0;
+        urls = multi_url_buf;
     }
 
-    s->stack = ioth_newstacki(stack_name, vdeurl);
-
+    s->stack = ioth_newstackv(stack_name, urls);
+    free(multi_url_buf);
     return 0;
 }
 
