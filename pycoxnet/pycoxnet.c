@@ -675,6 +675,49 @@ sock_shutdown(PyObject *self, PyObject *arg)
     Py_RETURN_NONE;
 }
 
+static PyObject*
+sock_getsockname(PyObject* self, PyObject* args)
+{
+    socket_object* s = (socket_object*)self;
+    
+    struct sockaddr_storage addrbuf;
+    socklen_t addrlen = sizeof(struct sockaddr_storage);
+
+    int res;
+    Py_BEGIN_ALLOW_THREADS
+    res = ioth_getsockname(s->fd, (struct sockaddr*)&addrbuf, &addrlen);
+    Py_END_ALLOW_THREADS
+
+    if(res < 0) {
+        PyErr_SetFromErrno(PyExc_OSError);
+        return NULL;
+    }
+
+    return make_sockaddr((struct sockaddr*)&addrbuf, addrlen);
+}
+
+static PyObject*
+sock_getpeername(PyObject* self, PyObject* args)
+{
+    socket_object* s = (socket_object*)self;
+    
+    struct sockaddr_storage addrbuf;
+    socklen_t addrlen = sizeof(struct sockaddr_storage);
+
+    int res;
+    Py_BEGIN_ALLOW_THREADS
+    res = ioth_getpeername(s->fd, (struct sockaddr*)&addrbuf, &addrlen);
+    Py_END_ALLOW_THREADS
+
+    if(res < 0) {
+        PyErr_SetFromErrno(PyExc_OSError);
+        return NULL;
+    }
+
+    return make_sockaddr((struct sockaddr*)&addrbuf, addrlen);
+}
+
+
 static PyMethodDef socket_methods[] = 
 {
     {"bind",    sock_bind,    METH_O,       "bind addr"},
@@ -690,6 +733,8 @@ static PyMethodDef socket_methods[] =
     {"getsockopt", sock_getsockopt, METH_VARARGS, "get socket option"},
     {"setsockopt", sock_setsockopt, METH_VARARGS, "set socket option"},
     {"shutdown", sock_shutdown, METH_O, "shutdown the socket"},
+    {"getsockname", sock_getsockname, METH_NOARGS, "get socket name"},
+    {"getpeername", sock_getpeername, METH_NOARGS, "get peer name"},
 
 
     {NULL, NULL} /* sentinel */
