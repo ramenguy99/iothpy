@@ -1,7 +1,3 @@
-_Parametro string per costruttore stack
-_recvmsg recvfrom recvmsgfrom sendmsg sendto sendfrom
-_poll e funzioni necessariei
-
-cose future assai:
-_ioctl fcntl getsockopt etc...
+_recvmsg recvfrom recvmsgfrom sendmsg sendto sendmsgto
 _rename di tutte le robe
+_ioth_linksetupdown, ioth_iproute_add
