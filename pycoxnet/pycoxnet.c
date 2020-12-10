@@ -1373,6 +1373,92 @@ stack_ipaddr_add(stack_object* self, PyObject* args)
     Py_RETURN_NONE;
 }
 
+PyDoc_STRVAR(ipaddr_del_doc, "ipaddr_del(family, addr, prefix_len, if_index)\n\
+\n\
+delete an IP address to the interface if_index.\n\
+Supports IPv4 (family == AF_INET) and IPv6 (family == AF_INET6)");
+
+static PyObject*
+stack_ipaddr_del(stack_object *self, PyObject *args){
+    int af;
+    Py_buffer packed_ip;
+    int prefix_len;
+    int if_index;
+
+    if(!self->stack) 
+    {
+        PyErr_SetString(PyExc_Exception, "Uninitialized stack");
+        return NULL;
+    }
+
+    /* Parse arguments */
+    if(!PyArg_ParseTuple(args, "iy*ii:ipaddr_del", &af, &packed_ip, &prefix_len, &if_index)) {
+        return NULL;
+    }
+   
+    /* Check family */
+    if(af != AF_INET && af != AF_INET6) {
+        PyErr_Format(PyExc_ValueError, "unknown address family %d", af);
+        PyBuffer_Release(&packed_ip);
+        return NULL;
+    }
+
+    /* Check address length */
+    if(!check_ip_buffer(af, packed_ip)) {
+       PyErr_SetString(PyExc_ValueError, "invalid length of ip address");
+       PyBuffer_Release(&packed_ip);
+       return NULL;
+    }
+
+    if(ioth_ipaddr_del(self->stack, af, packed_ip.buf, prefix_len, if_index) < 0) {
+        PyErr_SetString(PyExc_Exception, "failed to delete ip address to interface");
+        PyBuffer_Release(&packed_ip);
+        return NULL;
+    }
+
+    PyBuffer_Release(&packed_ip);
+    Py_RETURN_NONE;
+}
+
+PyDoc_STRVAR(iplink_add_doc, "iplink_add(ifindex, type, data, ifname)\n\
+\n\
+This function adds a new link of type type,  named  ifname.  The\n\
+value of data depends on the type of link and can be optional. A de‐\n\
+fault interface name is assigned if ifname is missing.  The  link  is\n\
+created with a given index when ifindex is positive.\n\
+\n\
+iplink_add can return the (positive)  ifindex  of  the  newly\n\
+created  link  when  the  argument ifindex is -1 and the stack supports\n\
+this feature.");
+
+static PyObject*
+stack_iplink_add(stack_object *self, PyObject *args){
+    char* ifname = NULL;
+    unsigned int ifindex;
+    char* type;
+    char* data = NULL;
+
+    int newifindex;
+
+    if(!self->stack) 
+    {
+        PyErr_SetString(PyExc_Exception, "Uninitialized stack");
+        return NULL;
+    }
+
+    /* Parse arguments */
+    if(!PyArg_ParseTuple(args, "is|ss:iplink_add", &ifindex, &type, &data, &ifname)) {
+        return NULL;
+    }
+
+     if((newifindex = ioth_iplink_add(self->stack, ifname, ifindex, type, data)) < 0) {
+        PyErr_SetString(PyExc_Exception, "failed to add link");
+        return NULL;
+    }
+
+    return PyLong_FromLong(newifindex);
+}
+
 PyDoc_STRVAR(stack_socket_doc, "create a new socket for the network stack");
 
 static PyObject *
@@ -1417,6 +1503,8 @@ static PyMethodDef stack_methods[] = {
 
     {"linksetupdown", (PyCFunction)stack_linksetupdown, METH_VARARGS, linksetupdown_doc},
     {"ipaddr_add", (PyCFunction)stack_ipaddr_add, METH_VARARGS, ipaddr_add_doc},
+    {"ipaddr_del", (PyCFunction)stack_ipaddr_del, METH_VARARGS, ipaddr_del_doc},
+    {"iplink_add", (PyCFunction)stack_iplink_add, METH_VARARGS, iplink_add_doc},
     {"iproute_add", (PyCFunction)stack_iproute_add, METH_VARARGS, iproute_add_doc},
     {"iproute_del", (PyCFunction)stack_iproute_del, METH_VARARGS, iproute_del_doc},
     {"socket", (PyCFunction)stack_socket, METH_VARARGS | METH_KEYWORDS, stack_socket_doc},
