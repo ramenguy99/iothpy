@@ -1555,7 +1555,7 @@ static PyMethodDef stack_methods[] = {
     {"ipaddr_add", (PyCFunction)stack_ipaddr_add, METH_VARARGS, ipaddr_add_doc},
     {"ipaddr_del", (PyCFunction)stack_ipaddr_del, METH_VARARGS, ipaddr_del_doc},
     {"iplink_add", (PyCFunction)stack_iplink_add, METH_VARARGS, iplink_add_doc},
-    {"iplink_del", (PyCFunction)stack_iplink_del, METH_VARARGS | METH_KEYWORDS, "iplink_del"},
+    {"iplink_del", (PyCFunction)stack_iplink_del, METH_VARARGS | METH_KEYWORDS, iplink_del_doc},
     {"iproute_add", (PyCFunction)stack_iproute_add, METH_VARARGS, iproute_add_doc},
     {"iproute_del", (PyCFunction)stack_iproute_del, METH_VARARGS, iproute_del_doc},
     {"socket", (PyCFunction)stack_socket, METH_VARARGS | METH_KEYWORDS, stack_socket_doc},
