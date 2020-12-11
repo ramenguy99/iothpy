@@ -1459,6 +1459,56 @@ stack_iplink_add(stack_object *self, PyObject *args){
     return PyLong_FromLong(newifindex);
 }
 
+PyDoc_STRVAR(iplink_del_doc," iplink_del(ifname = "", ifindex = 0)\n\
+This  function  removes  a  link.  The link to be deleted can be\n\
+identified by the named paramenter ifname or by the named parameter (ifindex).  Ei‐\n\
+ther  ifindex  can be zero or ifname can be empty. It is possible\n\
+to use both ifindex and ifname to identify the  link.  An  error\n\
+may occur if the parameters are inconsistent.");
+
+static PyObject*
+stack_iplink_del(stack_object *self, PyObject *args, PyObject *kwargs){
+    char* ifname = NULL;
+    unsigned int ifindex = 0;
+    PyObject *retvalue = NULL;
+
+    static char *kwlist[] = {"ifname", "ifindex", NULL};
+
+    PyObject *empty = PyTuple_New(0);
+
+    if(!self->stack) 
+    {
+        PyErr_SetString(PyExc_Exception, "Uninitialized stack");
+        goto out;
+    }    
+
+    if(empty == NULL){
+        PyErr_SetString(PyExc_Exception, "failed to remove link");
+        goto out;
+    }
+
+    if(!PyArg_ParseTupleAndKeywords(empty, kwargs, "|si", kwlist, &ifname, &ifindex)){
+        goto out;
+    }
+    
+    if(ifname == NULL && ifindex == 0){
+        PyErr_SetString(PyExc_Exception, "failed to remove link empty parameters");
+        goto out;
+    }
+
+    int ret = 0;
+    if((ret = ioth_iplink_del(self->stack, ifname, ifindex))<0){
+        PyErr_SetString(PyExc_Exception, "failed to remove link");
+        goto out;
+    }
+
+    retvalue = PyLong_FromLong(ret);
+
+    out:
+        Py_XDECREF(empty);
+        return retvalue;
+}
+
 PyDoc_STRVAR(stack_socket_doc, "create a new socket for the network stack");
 
 static PyObject *
@@ -1505,6 +1555,7 @@ static PyMethodDef stack_methods[] = {
     {"ipaddr_add", (PyCFunction)stack_ipaddr_add, METH_VARARGS, ipaddr_add_doc},
     {"ipaddr_del", (PyCFunction)stack_ipaddr_del, METH_VARARGS, ipaddr_del_doc},
     {"iplink_add", (PyCFunction)stack_iplink_add, METH_VARARGS, iplink_add_doc},
+    {"iplink_del", (PyCFunction)stack_iplink_del, METH_VARARGS | METH_KEYWORDS, "iplink_del"},
     {"iproute_add", (PyCFunction)stack_iproute_add, METH_VARARGS, iproute_add_doc},
     {"iproute_del", (PyCFunction)stack_iproute_del, METH_VARARGS, iproute_del_doc},
     {"socket", (PyCFunction)stack_socket, METH_VARARGS | METH_KEYWORDS, stack_socket_doc},
