@@ -1,5 +1,6 @@
 #define PY_SSIZE_T_CLEAN
 #include <Python.h>
+#include <structmember.h>
 
 #ifndef _GNU_SOURCE
 #define _GNU_SOURCE
@@ -469,7 +470,6 @@ sock_recvfrom(PyObject *self, PyObject *args){
         return NULL;
     }
 
-    // printf("after buf\n");
     struct sockaddr_storage addrbuf;
     socklen_t addrlen;
 
@@ -523,6 +523,7 @@ sock_close(PyObject *self, PyObject *args)
         int res = ioth_close(s->fd);
         s->fd = -1;
         if(res < 0 && errno != ECONNRESET) {
+            PyErr_SetFromErrno(PyExc_OSError);
             return NULL;
         }
     }
@@ -933,6 +934,15 @@ socket_finalize(socket_object* s)
 
 PyDoc_STRVAR(socket_doc, "Test documentation for socket type");
  
+/* sock_object members */
+static PyMemberDef socket_memberlist[] = {
+       {"family", T_INT, offsetof(socket_object, family), READONLY, "the socket family"},
+       {"type", T_INT, offsetof(socket_object, type), READONLY, "the socket type"},
+       {"proto", T_INT, offsetof(socket_object, proto), READONLY, "the socket protocol"},
+       {0},
+};
+
+
 static PyTypeObject socket_type = {
     PyVarObject_HEAD_INIT(0, 0)         /* Must fill in type value later */
     "_pycoxnet.socket",                         /* tp_name */
@@ -962,7 +972,7 @@ static PyTypeObject socket_type = {
     0,                                          /* tp_iter */
     0,                                          /* tp_iternext */
     socket_methods,                             /* tp_methods */
-    0,                          /* tp_members */
+    socket_memberlist,                          /* tp_members */
     0,                          /* tp_getset */
     0,                                          /* tp_base */
     0,                                          /* tp_dict */
@@ -1745,6 +1755,12 @@ PyInit__pycoxnet(void)
     if(PyModule_AddObject(module, "stack", (PyObject*)&stack_type) != 0) {
         return NULL;
     }
+
+    /* Add a symbol for the socket type */
+    Py_INCREF((PyObject *)&socket_type);
+    if (PyModule_AddObject(module, "SocketType",
+                           (PyObject *)&socket_type) != 0)
+        return NULL;
 
     return module;
 }
