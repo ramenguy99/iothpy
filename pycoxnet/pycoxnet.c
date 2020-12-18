@@ -43,6 +43,9 @@ typedef struct socket_object
     int family;
     int type;
     int proto;
+
+    _PyTime_t sock_timeout;     /* Operation timeout in seconds */
+    
 } socket_object;
 
 
@@ -718,6 +721,92 @@ sock_getpeername(PyObject* self, PyObject* args)
 }
 
 
+/* Function to perform the setting of socket blocking mode
+   internally. block = (1 | 0). */
+static int
+internal_setblocking(socket_object* s, int block)
+{
+    int result = -1;
+    int delay_flag, new_delay_flag;
+
+    /* Use fcntl instead of ioctl because it's supported by picoxnet */
+    Py_BEGIN_ALLOW_THREADS
+    delay_flag = ioth_fcntl(s->fd, F_GETFL, 0);
+    if (delay_flag == -1)
+        goto done;
+    if (block)
+        new_delay_flag = delay_flag & (~O_NONBLOCK);
+    else
+        new_delay_flag = delay_flag | O_NONBLOCK;
+    if (new_delay_flag != delay_flag)
+        if (ioth_fcntl(s->fd, F_SETFL, new_delay_flag) == -1)
+            goto done;
+
+    result = 0;
+done:
+    Py_END_ALLOW_THREADS
+
+    if (result) {
+        PyErr_SetFromErrno(PyExc_OSError);
+    }
+
+    return result;
+}
+
+
+/* s.setblocking(flag) method.  Argument:
+   False -- non-blocking mode; same as settimeout(0)
+   True -- blocking mode; same as settimeout(None)
+*/
+
+static PyObject *
+sock_setblocking(PyObject *self, PyObject *arg)
+{
+    socket_object* s = (socket_object*)self;
+
+    long block;
+
+    block = PyLong_AsLong(arg);
+    if (block == -1 && PyErr_Occurred())
+        return NULL;
+
+    s->sock_timeout = _PyTime_FromSeconds(block ? -1 : 0);
+    if (internal_setblocking(s, block) == -1) {
+        return NULL;
+    }
+    Py_RETURN_NONE;
+}
+
+
+PyDoc_STRVAR(setblocking_doc,
+"setblocking(flag)\n\
+\n\
+Set the socket to blocking (flag is true) or non-blocking (false).\n\
+setblocking(True) is equivalent to settimeout(None);\n\
+setblocking(False) is equivalent to settimeout(0.0).");
+
+/* s.getblocking() method.
+   Returns True if socket is in blocking mode,
+   False if it is in non-blocking mode.
+*/
+static PyObject *
+sock_getblocking(PyObject *self, PyObject *Py_UNUSED(ignored))
+{
+    socket_object* s = (socket_object*)self;
+
+    if (s->sock_timeout) {
+        Py_RETURN_TRUE;
+    }
+    else {
+        Py_RETURN_FALSE;
+    }
+}
+
+PyDoc_STRVAR(getblocking_doc,
+"getblocking()\n\
+\n\
+Returns True if socket is in blocking mode, or False if it\n\
+is in non-blocking mode.");
 static PyMethodDef socket_methods[] = 
 {
     {"bind",    sock_bind,    METH_O,       "bind addr"},
@@ -735,6 +824,10 @@ static PyMethodDef socket_methods[] =
     {"shutdown", sock_shutdown, METH_O, "shutdown the socket"},
     {"getsockname", sock_getsockname, METH_NOARGS, "get socket name"},
     {"getpeername", sock_getpeername, METH_NOARGS, "get peer name"},
+    {"setblocking", sock_setblocking, METH_O, setblocking_doc},
+    {"getblocking", sock_getblocking, METH_NOARGS, getblocking_doc},
+
+
 
 
     {NULL, NULL} /* sentinel */
@@ -815,6 +908,7 @@ socket_new(PyTypeObject *type, PyObject *args, PyObject *kwds)
     if (new != NULL) {
         socket_object* s = (socket_object*)new;
         s->fd = -1;
+        s->sock_timeout = _PyTime_FromSeconds(-1);
     }
     
     return new;
