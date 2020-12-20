@@ -26,7 +26,7 @@ foreach(HEADER IN LISTS HEADERS_REQUIRED)
 endforeach(HEADER)
 
 # Target for python extension module
-add_library(_pycoxnet MODULE pycoxnet/pycoxnet.c)
+add_library(_pycoxnet MODULE pycoxnet/pycoxnet.c pycoxnet/pycoxnet_socket.c pycoxnet/pycoxnet_stack.c)
 target_link_libraries(_pycoxnet -lioth)
 python_extension_module(_pycoxnet)
 
