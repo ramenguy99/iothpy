@@ -668,7 +668,7 @@ static PyMethodDef stack_methods[] = {
     {"iplink_del", (PyCFunction)stack_iplink_del, METH_VARARGS | METH_KEYWORDS, iplink_del_doc},
     {"iproute_add", (PyCFunction)stack_iproute_add, METH_VARARGS, iproute_add_doc},
     {"iproute_del", (PyCFunction)stack_iproute_del, METH_VARARGS, iproute_del_doc},
-    {"socket", (PyCFunction)stack_socket, METH_VARARGS | METH_KEYWORDS, stack_socket_doc},
+//    {"socket", (PyCFunction)stack_socket, METH_VARARGS | METH_KEYWORDS, stack_socket_doc},
 
 
     {NULL, NULL} /* sentinel */
@@ -685,7 +685,7 @@ getstack() -- return the pointer to the network stack\n\
 
 PyTypeObject stack_type = {
   PyVarObject_HEAD_INIT(0, 0)                 /* Must fill in type value later */
-    "_pycoxnet.stack",                             /* tp_name */
+    "_pycoxnet.stack_base",                             /* tp_name */
     sizeof(stack_object),                       /* tp_basicsize */
     0,                                          /* tp_itemsize */
     (destructor)stack_dealloc,                  /* tp_dealloc */

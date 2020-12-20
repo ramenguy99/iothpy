@@ -46,7 +46,7 @@ PyInit__pycoxnet(void)
 
     /* Add a symbol for the stack type */
     Py_INCREF((PyObject *)&stack_type);
-    if(PyModule_AddObject(module, "stack", (PyObject*)&stack_type) != 0) {
+    if(PyModule_AddObject(module, "stack_base", (PyObject*)&stack_type) != 0) {
         return NULL;
     }
 
@@ -56,5 +56,12 @@ PyInit__pycoxnet(void)
                            (PyObject *)&socket_type) != 0)
         return NULL;
 
+    /* Add a symbol for the socket type */
+    Py_INCREF((PyObject *)&socket_type);
+    if (PyModule_AddObject(module, "socket_base",
+                           (PyObject *)&socket_type) != 0)
+        return NULL;
+
+ 
     return module;
 }

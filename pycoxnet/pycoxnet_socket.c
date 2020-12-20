@@ -293,13 +293,20 @@ sock_accept(PyObject *self, PyObject* unused_args)
         return NULL;
     }
 
-    PyObject* sock = new_socket_from_fd((stack_object*)s->stack, s->family, s->type, s->proto, connfd);
-    if(!sock) {
+//    PyObject* sock = new_socket_from_fd((stack_object*)s->stack, s->family, s->type, s->proto, connfd);
+//    if(!sock) {
+//        return NULL;
+//    }
+
+    PyObject* sock = PyLong_FromLong(connfd);
+    if (sock == NULL) {
+        ioth_close(connfd);
         return NULL;
     }
 
     PyObject* addr = make_sockaddr((struct sockaddr*)&addrbuf, addrlen);
     if(!addr) {
+        ioth_close(connfd);
         Py_XDECREF(sock);
         return NULL;
     }
@@ -797,7 +804,7 @@ static PyMethodDef socket_methods[] =
     {"close",   sock_close,   METH_NOARGS,  "close socket identified by fd"},
     {"connect", sock_connect, METH_O,       "connect socket identified by fd sin_addr"},
     {"listen",  sock_listen,  METH_VARARGS, "start listen on socket identified by fd"},
-    {"accept",  sock_accept,  METH_NOARGS,  "accept connection on socket identified by fd"},
+    {"_accept",  sock_accept,  METH_NOARGS,  "accept connection on socket identified by fd"},
     {"recv",    sock_recv,    METH_VARARGS, "recv size bytes as string from socket indentified by fd"},
     {"recvfrom", sock_recvfrom, METH_VARARGS, recvfrom_doc},
     {"send",    sock_send,    METH_VARARGS, "send string to socket indentified by fd"},  
@@ -922,13 +929,14 @@ static PyMemberDef socket_memberlist[] = {
        {"family", T_INT, offsetof(socket_object, family), READONLY, "the socket family"},
        {"type", T_INT, offsetof(socket_object, type), READONLY, "the socket type"},
        {"proto", T_INT, offsetof(socket_object, proto), READONLY, "the socket protocol"},
+       {"stack", T_OBJECT_EX, offsetof(socket_object, stack), READONLY, "the stack of the socket"},
        {0},
 };
 
 
 PyTypeObject socket_type = {
     PyVarObject_HEAD_INIT(0, 0)         /* Must fill in type value later */
-    "_pycoxnet.socket",                         /* tp_name */
+    "_pycoxnet.socket_base",                         /* tp_name */
     sizeof(socket_object),                      /* tp_basicsize */
     0,                                          /* tp_itemsize */
     (destructor)socket_dealloc,                 /* tp_dealloc */
