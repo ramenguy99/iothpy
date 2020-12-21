@@ -44,6 +44,13 @@ PyInit__pycoxnet(void)
 
     PyObject* module = PyModule_Create(&pycox_module);
 
+    socket_timeout = PyErr_NewException("socket.timeout",
+                                        PyExc_OSError, NULL);
+    if (socket_timeout == NULL)
+        return NULL;
+    Py_INCREF(socket_timeout);
+    PyModule_AddObject(module, "timeout", socket_timeout);
+
     /* Add a symbol for the stack type */
     Py_INCREF((PyObject *)&stack_type);
     if(PyModule_AddObject(module, "stack_base", (PyObject*)&stack_type) != 0) {

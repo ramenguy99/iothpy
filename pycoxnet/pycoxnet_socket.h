@@ -25,4 +25,4 @@ typedef struct socket_object
 } socket_object;
 
 extern PyTypeObject socket_type;
-
+extern PyObject *socket_timeout;
