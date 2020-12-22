@@ -686,6 +686,573 @@ sock_recv_into(PyObject* self, PyObject *args, PyObject *kwds)
     return PyLong_FromSsize_t(readlen);
 }
 
+
+struct sock_recvfrom_ctx {
+    char* cbuf;
+    Py_ssize_t len;
+    int flags;
+    socklen_t *addrlen;
+    struct sockaddr* addrbuf;
+    Py_ssize_t result;
+};
+
+static int
+sock_recvfrom_impl(socket_object* s, void *data)
+{
+    struct sock_recvfrom_ctx *ctx = data;
+
+    memset(ctx->addrbuf, 0, *ctx->addrlen);
+
+    ctx->result = ioth_recvfrom(s->fd, ctx->cbuf, ctx->len, ctx->flags, ctx->addrbuf, ctx->addrlen);
+    return ctx->result >= 0;
+}
+
+/*
+ * This is the guts of the recvfrom() and recvfrom_into() methods, which reads
+ * into a char buffer.  If you have any inc/def ref to do to the objects that
+ * contain the buffer, do it in the caller.  This function returns the number
+ * of bytes successfully read.  If there was an error, it returns -1.  Note
+ * that it is also possible that we return a number of bytes smaller than the
+ * request bytes.
+ *
+ * 'addr' is a return value for the address object.  Note that you must decref
+ * it yourself.
+ */
+static Py_ssize_t
+sock_recvfrom_guts(socket_object* s, char* cbuf, Py_ssize_t len, int flags,
+                   PyObject** addr)
+{
+    struct sockaddr_storage addrbuf;
+    socklen_t addrlen;
+    struct sock_recvfrom_ctx ctx;
+
+    *addr = NULL;
+
+    if (!getsockaddrlen(s, &addrlen))
+        return -1;
+
+    ctx.cbuf = cbuf;
+    ctx.len = len;
+    ctx.flags = flags;
+    ctx.addrbuf = (struct sockaddr*)&addrbuf;
+    ctx.addrlen = &addrlen;
+    if (sock_call(s, 0, sock_recvfrom_impl, &ctx, 0, NULL, s->sock_timeout) < 0)
+        return -1;
+
+    *addr = make_sockaddr((struct sockaddr*)&addrbuf, addrlen);
+    if (*addr == NULL)
+        return -1;
+
+    return ctx.result;
+}
+
+static PyObject*
+sock_recvfrom(PyObject *self, PyObject *args){
+    socket_object* s = (socket_object*)self;
+
+    PyObject *ret = NULL;
+    int flags = 0;
+    ssize_t recvlen, outlen;
+
+    if (!PyArg_ParseTuple(args, "n|i:recvfrom", &recvlen, &flags)){
+        return NULL;
+    }
+
+    if (recvlen < 0) {
+        PyErr_SetString(PyExc_ValueError,
+                        "negative buffersize in recvfrom");
+        return NULL;
+    }
+    
+    PyObject *buf = PyBytes_FromStringAndSize(NULL, recvlen);
+    if (buf == NULL){
+        return NULL;
+    }
+
+    PyObject* addr = NULL;
+    outlen = sock_recvfrom_guts(s, PyBytes_AS_STRING(buf), recvlen, flags, &addr);
+
+    if(outlen < 0) {
+        goto finally;
+    }
+    
+    if (outlen != recvlen) {
+        /* We did not read as many bytes as we anticipated, resize the
+           string if possible and be successful. */
+        if (_PyBytes_Resize(&buf, outlen) < 0)
+            /* Oopsy, not so successful after all. */
+            goto finally;
+    }
+
+
+    ret = PyTuple_Pack(2, buf, addr);
+
+finally:
+    Py_XDECREF(buf);
+    Py_XDECREF(addr);
+    return ret;
+}
+
+PyDoc_STRVAR(recvfrom_doc,
+"recvfrom(buffersize[, flags]) -> (data, address info)\n\
+\n\
+Like recv(buffersize, flags) but also return the sender's address info.");
+
+
+/* s.recvfrom_into(buffer[, nbytes [,flags]]) method */
+
+static PyObject *
+sock_recvfrom_into(PyObject* self, PyObject *args, PyObject* kwds)
+{
+    socket_object* s = (socket_object*)self;
+
+    static char *kwlist[] = {"buffer", "nbytes", "flags", 0};
+
+    int flags = 0;
+    Py_buffer pbuf;
+    char *buf;
+    Py_ssize_t readlen, buflen, recvlen = 0;
+
+    PyObject *addr = NULL;
+
+    if (!PyArg_ParseTupleAndKeywords(args, kwds, "w*|ni:recvfrom_into",
+                                     kwlist, &pbuf,
+                                     &recvlen, &flags))
+        return NULL;
+    buf = pbuf.buf;
+    buflen = pbuf.len;
+
+    if (recvlen < 0) {
+        PyBuffer_Release(&pbuf);
+        PyErr_SetString(PyExc_ValueError,
+                        "negative buffersize in recvfrom_into");
+        return NULL;
+    }
+    if (recvlen == 0) {
+        /* If nbytes was not specified, use the buffer's length */
+        recvlen = buflen;
+    } else if (recvlen > buflen) {
+        PyBuffer_Release(&pbuf);
+        PyErr_SetString(PyExc_ValueError,
+                        "nbytes is greater than the length of the buffer");
+        return NULL;
+    }
+
+    readlen = sock_recvfrom_guts(s, buf, recvlen, flags, &addr);
+    if (readlen < 0) {
+        PyBuffer_Release(&pbuf);
+        /* Return an error */
+        Py_XDECREF(addr);
+        return NULL;
+    }
+
+    PyBuffer_Release(&pbuf);
+    /* Return the number of bytes read and the address.  Note that we do
+       not do anything special here in the case that readlen < recvlen. */
+    return Py_BuildValue("nN", readlen, addr);
+}
+
+PyDoc_STRVAR(recvfrom_into_doc,
+"recvfrom_into(buffer[, nbytes[, flags]]) -> (nbytes, address info)\n\
+\n\
+Like recv_into(buffer[, nbytes[, flags]]) but also return the sender's address info.");
+
+/* The sendmsg() and recvmsg[_into]() methods require a working
+   CMSG_LEN().  See the comment near get_CMSG_LEN(). */
+#ifdef CMSG_LEN
+/* Return true iff msg->msg_controllen is valid, cmsgh is a valid
+   pointer in msg->msg_control with at least "space" bytes after it,
+   and its cmsg_len member inside the buffer. */
+static int
+cmsg_min_space(struct msghdr *msg, struct cmsghdr *cmsgh, size_t space)
+{
+    size_t cmsg_offset;
+    static const size_t cmsg_len_end = (offsetof(struct cmsghdr, cmsg_len) +
+                                        sizeof(cmsgh->cmsg_len));
+
+    /* Note that POSIX allows msg_controllen to be of signed type. */
+    if (cmsgh == NULL || msg->msg_control == NULL)
+        return 0;
+    /* Note that POSIX allows msg_controllen to be of a signed type. This is
+       annoying under OS X as it's unsigned there and so it triggers a
+       tautological comparison warning under Clang when compared against 0.
+       Since the check is valid on other platforms, silence the warning under
+       Clang. */
+    if (msg->msg_controllen < 0)
+        return 0;
+    if (space < cmsg_len_end)
+        space = cmsg_len_end;
+    cmsg_offset = (char *)cmsgh - (char *)msg->msg_control;
+    return (cmsg_offset <= (size_t)-1 - space &&
+            cmsg_offset + space <= msg->msg_controllen);
+}
+
+
+/* If pointer CMSG_DATA(cmsgh) is in buffer msg->msg_control, set
+   *space to number of bytes following it in the buffer and return
+   true; otherwise, return false.  Assumes cmsgh, msg->msg_control and
+   msg->msg_controllen are valid. */
+static int
+get_cmsg_data_space(struct msghdr *msg, struct cmsghdr *cmsgh, size_t *space)
+{
+    size_t data_offset;
+    char *data_ptr;
+
+    if ((data_ptr = (char *)CMSG_DATA(cmsgh)) == NULL)
+        return 0;
+    data_offset = data_ptr - (char *)msg->msg_control;
+    if (data_offset > msg->msg_controllen)
+        return 0;
+    *space = msg->msg_controllen - data_offset;
+    return 1;
+}
+
+/* If cmsgh is invalid or not contained in the buffer pointed to by
+   msg->msg_control, return -1.  If cmsgh is valid and its associated
+   data is entirely contained in the buffer, set *data_len to the
+   length of the associated data and return 0.  If only part of the
+   associated data is contained in the buffer but cmsgh is otherwise
+   valid, set *data_len to the length contained in the buffer and
+   return 1. */
+static int
+get_cmsg_data_len(struct msghdr *msg, struct cmsghdr *cmsgh, size_t *data_len)
+{
+    size_t space, cmsg_data_len;
+
+    if (!cmsg_min_space(msg, cmsgh, CMSG_LEN(0)) ||
+        cmsgh->cmsg_len < CMSG_LEN(0))
+        return -1;
+    cmsg_data_len = cmsgh->cmsg_len - CMSG_LEN(0);
+    if (!get_cmsg_data_space(msg, cmsgh, &space))
+        return -1;
+    if (space >= cmsg_data_len) {
+        *data_len = cmsg_data_len;
+        return 0;
+    }
+    *data_len = space;
+    return 1;
+}
+
+struct sock_recvmsg_ctx {
+    struct msghdr *msg;
+    int flags;
+    ssize_t result;
+};
+
+static int
+sock_recvmsg_impl(socket_object* s, void *data)
+{
+    struct sock_recvmsg_ctx *ctx = data;
+
+    ctx->result = ioth_recvmsg(s->fd, ctx->msg, ctx->flags);
+    return  (ctx->result >= 0);
+}
+
+/*
+ * Call recvmsg() with the supplied iovec structures, flags, and
+ * ancillary data buffer size (controllen).  Returns the tuple return
+ * value for recvmsg() or recvmsg_into(), with the first item provided
+ * by the supplied makeval() function.  makeval() will be called with
+ * the length read and makeval_data as arguments, and must return a
+ * new reference (which will be decrefed if there is a subsequent
+ * error).  On error, closes any file descriptors received via
+ * SCM_RIGHTS.
+ */
+
+static PyObject *
+sock_recvmsg_guts(socket_object *s, struct iovec *iov, int iovlen,
+                  int flags, Py_ssize_t controllen,
+                  PyObject *(*makeval)(ssize_t, void *), void *makeval_data)
+{
+    struct sockaddr_storage addrbuf;
+    socklen_t addrbuflen;
+    struct msghdr msg = {0};
+    PyObject *cmsg_list = NULL, *retval = NULL;
+    void *controlbuf = NULL;
+    struct cmsghdr *cmsgh;
+    size_t cmsgdatalen = 0;
+    int cmsg_status;
+    struct sock_recvmsg_ctx ctx;
+
+    /* XXX: POSIX says that msg_name and msg_namelen "shall be
+       ignored" when the socket is connected (Linux fills them in
+       anyway for AF_UNIX sockets at least).  Normally msg_namelen
+       seems to be set to 0 if there's no address, but try to
+       initialize msg_name to something that won't be mistaken for a
+       real address if that doesn't happen. */
+    if (!getsockaddrlen(s, &addrbuflen))
+        return NULL;
+    memset(&addrbuf, 0, addrbuflen);
+    ((struct sockaddr*)&addrbuf)->sa_family = AF_UNSPEC;
+
+    if (controllen < 0 || controllen > SOCKLEN_T_LIMIT) {
+        PyErr_SetString(PyExc_ValueError, "invalid ancillary data buffer length");
+        return NULL;
+    }
+    if (controllen > 0 && (controlbuf = PyMem_Malloc(controllen)) == NULL)
+        return PyErr_NoMemory();
+
+    /* Make the system call. */
+    msg.msg_name = (struct sockaddr*)&addrbuf;
+    msg.msg_namelen = addrbuflen;
+    msg.msg_iov = iov;
+    msg.msg_iovlen = iovlen;
+    msg.msg_control = controlbuf;
+    msg.msg_controllen = controllen;
+
+    ctx.msg = &msg;
+    ctx.flags = flags;
+    if (sock_call(s, 0, sock_recvmsg_impl, &ctx, 0, NULL, s->sock_timeout) < 0)
+        goto finally;
+
+    /* Make list of (level, type, data) tuples from control messages. */
+    if ((cmsg_list = PyList_New(0)) == NULL)
+        goto err_closefds;
+    /* Check for empty ancillary data as old CMSG_FIRSTHDR()
+       implementations didn't do so. */
+    for (cmsgh = ((msg.msg_controllen > 0) ? CMSG_FIRSTHDR(&msg) : NULL);
+         cmsgh != NULL; cmsgh = CMSG_NXTHDR(&msg, cmsgh)) {
+        PyObject *bytes, *tuple;
+        int tmp;
+
+        cmsg_status = get_cmsg_data_len(&msg, cmsgh, &cmsgdatalen);
+        if (cmsg_status != 0) {
+            if (PyErr_WarnEx(PyExc_RuntimeWarning,
+                             "received malformed or improperly-truncated "
+                             "ancillary data", 1) == -1)
+                goto err_closefds;
+        }
+        if (cmsg_status < 0)
+            break;
+        if (cmsgdatalen > PY_SSIZE_T_MAX) {
+            PyErr_SetString(PyExc_OSError, "control message too long");
+            goto err_closefds;
+        }
+
+        bytes = PyBytes_FromStringAndSize((char *)CMSG_DATA(cmsgh),
+                                          cmsgdatalen);
+        tuple = Py_BuildValue("iiN", (int)cmsgh->cmsg_level,
+                              (int)cmsgh->cmsg_type, bytes);
+        if (tuple == NULL)
+            goto err_closefds;
+        tmp = PyList_Append(cmsg_list, tuple);
+        Py_DECREF(tuple);
+        if (tmp != 0)
+            goto err_closefds;
+
+        if (cmsg_status != 0)
+            break;
+    }
+
+    retval = Py_BuildValue("NOiN",
+                           (*makeval)(ctx.result, makeval_data),
+                           cmsg_list,
+                           (int)msg.msg_flags,
+                           make_sockaddr((struct sockaddr*)(&addrbuf), 
+                               ((msg.msg_namelen > addrbuflen) ?  addrbuflen : msg.msg_namelen)));
+    if (retval == NULL)
+        goto err_closefds;
+
+finally:
+    Py_XDECREF(cmsg_list);
+    PyMem_Free(controlbuf);
+    return retval;
+
+err_closefds:
+#ifdef SCM_RIGHTS
+    /* Close all descriptors coming from SCM_RIGHTS, so they don't leak. */
+    for (cmsgh = ((msg.msg_controllen > 0) ? CMSG_FIRSTHDR(&msg) : NULL);
+         cmsgh != NULL; cmsgh = CMSG_NXTHDR(&msg, cmsgh)) {
+        cmsg_status = get_cmsg_data_len(&msg, cmsgh, &cmsgdatalen);
+        if (cmsg_status < 0)
+            break;
+        if (cmsgh->cmsg_level == SOL_SOCKET &&
+            cmsgh->cmsg_type == SCM_RIGHTS) {
+            size_t numfds;
+            int *fdp;
+
+            numfds = cmsgdatalen / sizeof(int);
+            fdp = (int *)CMSG_DATA(cmsgh);
+            while (numfds-- > 0)
+                close(*fdp++);
+        }
+        if (cmsg_status != 0)
+            break;
+    }
+#endif /* SCM_RIGHTS */
+    goto finally;
+}
+
+
+static PyObject *
+makeval_recvmsg(ssize_t received, void *data)
+{
+    PyObject **buf = data;
+
+    if (received < PyBytes_GET_SIZE(*buf))
+        _PyBytes_Resize(buf, received);
+    Py_XINCREF(*buf);
+    return *buf;
+}
+
+/* s.recvmsg(bufsize[, ancbufsize[, flags]]) method */
+
+static PyObject *
+sock_recvmsg(PyObject* self, PyObject *args)
+{
+    socket_object* s = (socket_object*)self;
+    Py_ssize_t bufsize, ancbufsize = 0;
+    int flags = 0;
+    struct iovec iov;
+    PyObject *buf = NULL, *retval = NULL;
+
+    if (!PyArg_ParseTuple(args, "n|ni:recvmsg", &bufsize, &ancbufsize, &flags))
+        return NULL;
+
+    if (bufsize < 0) {
+        PyErr_SetString(PyExc_ValueError, "negative buffer size in recvmsg()");
+        return NULL;
+    }
+    if ((buf = PyBytes_FromStringAndSize(NULL, bufsize)) == NULL)
+        return NULL;
+    iov.iov_base = PyBytes_AS_STRING(buf);
+    iov.iov_len = bufsize;
+
+    /* Note that we're passing a pointer to *our pointer* to the bytes
+       object here (&buf); makeval_recvmsg() may incref the object, or
+       deallocate it and set our pointer to NULL. */
+    retval = sock_recvmsg_guts(s, &iov, 1, flags, ancbufsize,
+                               &makeval_recvmsg, &buf);
+    Py_XDECREF(buf);
+    return retval;
+}
+
+PyDoc_STRVAR(recvmsg_doc,
+"recvmsg(bufsize[, ancbufsize[, flags]]) -> (data, ancdata, msg_flags, address)\n\
+\n\
+Receive normal data (up to bufsize bytes) and ancillary data from the\n\
+socket.  The ancbufsize argument sets the size in bytes of the\n\
+internal buffer used to receive the ancillary data; it defaults to 0,\n\
+meaning that no ancillary data will be received.  Appropriate buffer\n\
+sizes for ancillary data can be calculated using CMSG_SPACE() or\n\
+CMSG_LEN(), and items which do not fit into the buffer might be\n\
+truncated or discarded.  The flags argument defaults to 0 and has the\n\
+same meaning as for recv().\n\
+\n\
+The return value is a 4-tuple: (data, ancdata, msg_flags, address).\n\
+The data item is a bytes object holding the non-ancillary data\n\
+received.  The ancdata item is a list of zero or more tuples\n\
+(cmsg_level, cmsg_type, cmsg_data) representing the ancillary data\n\
+(control messages) received: cmsg_level and cmsg_type are integers\n\
+specifying the protocol level and protocol-specific type respectively,\n\
+and cmsg_data is a bytes object holding the associated data.  The\n\
+msg_flags item is the bitwise OR of various flags indicating\n\
+conditions on the received message; see your system documentation for\n\
+details.  If the receiving socket is unconnected, address is the\n\
+address of the sending socket, if available; otherwise, its value is\n\
+unspecified.\n\
+\n\
+If recvmsg() raises an exception after the system call returns, it\n\
+will first attempt to close any file descriptors received via the\n\
+SCM_RIGHTS mechanism.");
+
+
+static PyObject *
+makeval_recvmsg_into(ssize_t received, void *data)
+{
+    return PyLong_FromSsize_t(received);
+}
+
+/* s.recvmsg_into(buffers[, ancbufsize[, flags]]) method */
+
+static PyObject *
+sock_recvmsg_into(PyObject* self, PyObject *args)
+{
+    socket_object* s = (socket_object*)self;
+    Py_ssize_t ancbufsize = 0;
+    int flags = 0;
+    struct iovec *iovs = NULL;
+    Py_ssize_t i, nitems, nbufs = 0;
+    Py_buffer *bufs = NULL;
+    PyObject *buffers_arg, *fast, *retval = NULL;
+
+    if (!PyArg_ParseTuple(args, "O|ni:recvmsg_into",
+                          &buffers_arg, &ancbufsize, &flags))
+        return NULL;
+
+    if ((fast = PySequence_Fast(buffers_arg,
+                                "recvmsg_into() argument 1 must be an "
+                                "iterable")) == NULL)
+        return NULL;
+    nitems = PySequence_Fast_GET_SIZE(fast);
+    if (nitems > INT_MAX) {
+        PyErr_SetString(PyExc_OSError, "recvmsg_into() argument 1 is too long");
+        goto finally;
+    }
+
+    /* Fill in an iovec for each item, and save the Py_buffer
+       structs to release afterwards. */
+    if (nitems > 0 && ((iovs = PyMem_New(struct iovec, nitems)) == NULL ||
+                       (bufs = PyMem_New(Py_buffer, nitems)) == NULL)) {
+        PyErr_NoMemory();
+        goto finally;
+    }
+    for (; nbufs < nitems; nbufs++) {
+        if (!PyArg_Parse(PySequence_Fast_GET_ITEM(fast, nbufs),
+                         "w*;recvmsg_into() argument 1 must be an iterable "
+                         "of single-segment read-write buffers",
+                         &bufs[nbufs]))
+            goto finally;
+        iovs[nbufs].iov_base = bufs[nbufs].buf;
+        iovs[nbufs].iov_len = bufs[nbufs].len;
+    }
+
+    retval = sock_recvmsg_guts(s, iovs, nitems, flags, ancbufsize,
+                               &makeval_recvmsg_into, NULL);
+finally:
+    for (i = 0; i < nbufs; i++)
+        PyBuffer_Release(&bufs[i]);
+    PyMem_Free(bufs);
+    PyMem_Free(iovs);
+    Py_DECREF(fast);
+    return retval;
+}
+
+PyDoc_STRVAR(recvmsg_into_doc,
+"recvmsg_into(buffers[, ancbufsize[, flags]]) -> (nbytes, ancdata, msg_flags, address)\n\
+\n\
+Receive normal data and ancillary data from the socket, scattering the\n\
+non-ancillary data into a series of buffers.  The buffers argument\n\
+must be an iterable of objects that export writable buffers\n\
+(e.g. bytearray objects); these will be filled with successive chunks\n\
+of the non-ancillary data until it has all been written or there are\n\
+no more buffers.  The ancbufsize argument sets the size in bytes of\n\
+the internal buffer used to receive the ancillary data; it defaults to\n\
+0, meaning that no ancillary data will be received.  Appropriate\n\
+buffer sizes for ancillary data can be calculated using CMSG_SPACE()\n\
+or CMSG_LEN(), and items which do not fit into the buffer might be\n\
+truncated or discarded.  The flags argument defaults to 0 and has the\n\
+same meaning as for recv().\n\
+\n\
+The return value is a 4-tuple: (nbytes, ancdata, msg_flags, address).\n\
+The nbytes item is the total number of bytes of non-ancillary data\n\
+written into the buffers.  The ancdata item is a list of zero or more\n\
+tuples (cmsg_level, cmsg_type, cmsg_data) representing the ancillary\n\
+data (control messages) received: cmsg_level and cmsg_type are\n\
+integers specifying the protocol level and protocol-specific type\n\
+respectively, and cmsg_data is a bytes object holding the associated\n\
+data.  The msg_flags item is the bitwise OR of various flags\n\
+indicating conditions on the received message; see your system\n\
+documentation for details.  If the receiving socket is unconnected,\n\
+address is the address of the sending socket, if available; otherwise,\n\
+its value is unspecified.\n\
+\n\
+If recvmsg_into() raises an exception after the system call returns,\n\
+it will first attempt to close any file descriptors received via the\n\
+SCM_RIGHTS mechanism.");
+#endif    /* CMSG_LEN */
+
+
 struct sock_send_ctx {
     char *buf;
     Py_ssize_t len;
@@ -844,79 +1411,6 @@ sock_sendto(PyObject *self, PyObject *args)
     }
 
     return PyLong_FromSsize_t(res);
-}
-
-PyDoc_STRVAR(recvfrom_doc,
-"recvfrom(buffersize[, flags]) -> (data, address info)\n\
-\n\
-Like recv(buffersize, flags) but also return the sender's address info.");
-
-static PyObject*
-sock_recvfrom(PyObject *self, PyObject *args){
-    socket_object* s = (socket_object*)self;
-
-    PyObject *ret = NULL;
-    int flags = 0;
-    ssize_t recvlen, outlen;
-
-    if (!PyArg_ParseTuple(args, "n|i:recvfrom", &recvlen, &flags)){
-        return NULL;
-    }
-
-    if (recvlen < 0) {
-        PyErr_SetString(PyExc_ValueError,
-                        "negative buffersize in recvfrom");
-        return NULL;
-    }
-    
-    PyObject *buf = PyBytes_FromStringAndSize(NULL, recvlen);
-
-    if (buf == NULL){
-        return NULL;
-    }
-
-    struct sockaddr_storage addrbuf;
-    socklen_t addrlen;
-
-    // if(!getsockaddrlen(s, &addrlen)){
-    //     PyErr_SetString(PyExc_Exception, "failed to get sockaddrlen");
-    //     Py_XDECREF(buf);
-    //     return NULL;
-    // }
-
-    addrlen = sizeof(struct sockaddr_storage);
-    memset(&addrbuf, 0, sizeof(struct sockaddr_storage));
-
-    Py_BEGIN_ALLOW_THREADS
-    outlen = ioth_recvfrom(s->fd, PyBytes_AsString(buf), (int)recvlen, flags, (struct sockaddr*)&addrbuf, &addrlen);
-    Py_END_ALLOW_THREADS
-
-    if(outlen < 0) {
-        PyErr_SetString(PyExc_Exception, "failed to read from socket");
-        goto finally;
-    }
-    
-    PyObject* addr = make_sockaddr((struct sockaddr*)&addrbuf, addrlen);
-    if(addr == NULL){
-        PyErr_SetString(PyExc_Exception, "failed to read from socket");
-        goto finally;
-    }
-    
-    if (outlen != recvlen) {
-        /* We did not read as many bytes as we anticipated, resize the
-           string if possible and be successful. */
-        if (_PyBytes_Resize(&buf, outlen) < 0)
-            /* Oopsy, not so successful after all. */
-            goto finally;
-    }
-
-
-    ret = PyTuple_Pack(2, buf, addr);
-
-finally:
-    Py_XDECREF(buf);
-    Py_XDECREF(addr);
-    return ret;
 }
 
 static PyObject *
@@ -1397,6 +1891,14 @@ static PyMethodDef socket_methods[] =
     {"recv",    sock_recv,    METH_VARARGS, "recv size bytes as string from socket indentified by fd"},
     {"recv_into", (PyCFunction)sock_recv_into, METH_VARARGS | METH_KEYWORDS, "recv into size bytes as string from socket indentified by fd"},
     {"recvfrom", sock_recvfrom, METH_VARARGS, recvfrom_doc},
+    {"recvfrom_into", (PyCFunction)sock_recvfrom_into, METH_VARARGS | METH_KEYWORDS, recvfrom_into_doc},
+
+#ifdef CMSG_LEN
+    {"recvmsg",      sock_recvmsg, METH_VARARGS, recvmsg_doc},
+    {"recvmsg_into", sock_recvmsg_into, METH_VARARGS, recvmsg_into_doc,},
+//    {"sendmsg",      sock_sendmsg, METH_VARARGS, sendmsg_doc},
+#endif
+
     {"send",    sock_send,    METH_VARARGS, "send string to socket indentified by fd"},  
     {"sendall",    sock_sendall,    METH_VARARGS, "send all string to socket indentified by fd"},  
     {"sendto", sock_sendto, METH_VARARGS, sendto_doc},

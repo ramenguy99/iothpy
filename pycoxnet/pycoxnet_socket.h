@@ -29,3 +29,11 @@ extern PyObject *socket_timeout;
 extern _PyTime_t defaulttimeout;
 
 int socket_parse_timeout(_PyTime_t *timeout, PyObject *timeout_obj);
+
+
+#if INT_MAX > 0x7fffffff
+#define SOCKLEN_T_LIMIT 0x7fffffff
+#else
+#define SOCKLEN_T_LIMIT INT_MAX
+#endif
+

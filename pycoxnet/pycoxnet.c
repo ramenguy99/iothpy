@@ -23,6 +23,112 @@
 #include <libioth.h>
 
 
+#ifdef CMSG_LEN
+
+/* Support functions for the sendmsg() and recvmsg[_into]() methods.
+   Currently, these methods are only compiled if the RFC 2292/3542
+   CMSG_LEN() macro is available.  Older systems seem to have used
+   sizeof(struct cmsghdr) + (length) where CMSG_LEN() is used now, so
+   it may be possible to define CMSG_LEN() that way if it's not
+   provided.  Some architectures might need extra padding after the
+   cmsghdr, however, and CMSG_LEN() would have to take account of
+   this. */
+/* If length is in range, set *result to CMSG_LEN(length) and return
+   true; otherwise, return false. */
+static int
+get_CMSG_LEN(size_t length, size_t *result)
+{
+    size_t tmp;
+
+    if (length > (SOCKLEN_T_LIMIT - CMSG_LEN(0)))
+        return 0;
+    tmp = CMSG_LEN(length);
+    if (tmp > SOCKLEN_T_LIMIT || tmp < length)
+        return 0;
+    *result = tmp;
+    return 1;
+}
+
+
+/* Python interface to CMSG_LEN(length). */
+
+static PyObject *
+socket_CMSG_LEN(PyObject *self, PyObject *args)
+{
+    Py_ssize_t length;
+    size_t result;
+
+    if (!PyArg_ParseTuple(args, "n:CMSG_LEN", &length))
+        return NULL;
+    if (length < 0 || !get_CMSG_LEN(length, &result)) {
+        PyErr_Format(PyExc_OverflowError, "CMSG_LEN() argument out of range");
+        return NULL;
+    }
+    return PyLong_FromSize_t(result);
+}
+
+PyDoc_STRVAR(CMSG_LEN_doc,
+"CMSG_LEN(length) -> control message length\n\
+\n\
+Return the total length, without trailing padding, of an ancillary\n\
+data item with associated data of the given length.  This value can\n\
+often be used as the buffer size for recvmsg() to receive a single\n\
+item of ancillary data, but RFC 3542 requires portable applications to\n\
+use CMSG_SPACE() and thus include space for padding, even when the\n\
+item will be the last in the buffer.  Raises OverflowError if length\n\
+is outside the permissible range of values.");
+
+
+#ifdef CMSG_SPACE
+/* If length is in range, set *result to CMSG_SPACE(length) and return
+   true; otherwise, return false. */
+static int
+get_CMSG_SPACE(size_t length, size_t *result)
+{
+    size_t tmp;
+
+    /* Use CMSG_SPACE(1) here in order to take account of the padding
+       necessary before *and* after the data. */
+    if (length > (SOCKLEN_T_LIMIT - CMSG_SPACE(1)))
+        return 0;
+    tmp = CMSG_SPACE(length);
+    if (tmp > SOCKLEN_T_LIMIT || tmp < length)
+        return 0;
+    *result = tmp;
+    return 1;
+}
+
+/* Python interface to CMSG_SPACE(length). */
+
+static PyObject *
+socket_CMSG_SPACE(PyObject *self, PyObject *args)
+{
+    Py_ssize_t length;
+    size_t result;
+
+    if (!PyArg_ParseTuple(args, "n:CMSG_SPACE", &length))
+        return NULL;
+    if (length < 0 || !get_CMSG_SPACE(length, &result)) {
+        PyErr_SetString(PyExc_OverflowError,
+                        "CMSG_SPACE() argument out of range");
+        return NULL;
+    }
+    return PyLong_FromSize_t(result);
+}
+
+PyDoc_STRVAR(CMSG_SPACE_doc,
+"CMSG_SPACE(length) -> buffer size\n\
+\n\
+Return the buffer size needed for recvmsg() to receive an ancillary\n\
+data item with associated data of the given length, along with any\n\
+trailing padding.  The buffer space needed to receive multiple items\n\
+is the sum of the CMSG_SPACE() values for their associated data\n\
+lengths.  Raises OverflowError if length is outside the permissible\n\
+range of values.");
+#endif    /* CMSG_SPACE */
+#endif    /* CMSG_LEN */
+
+
 /* Python API to getting and setting the default timeout value. */
 static PyObject *
 socket_getdefaulttimeout(PyObject *self, PyObject *Py_UNUSED(ignored))
@@ -65,6 +171,13 @@ When the socket module is first imported, the default is None.");
 
 
 static PyMethodDef pycox_methods[] = {
+#ifdef CMSG_LEN
+    {"CMSG_LEN",   socket_CMSG_LEN, METH_VARARGS, CMSG_LEN_doc},
+#ifdef CMSG_SPACE
+    {"CMSG_SPACE", socket_CMSG_SPACE, METH_VARARGS, CMSG_SPACE_doc},
+#endif
+#endif
+
     {"getdefaulttimeout",  socket_getdefaulttimeout, METH_NOARGS, getdefaulttimeout_doc},
     {"setdefaulttimeout",  socket_setdefaulttimeout, METH_O, setdefaulttimeout_doc},    
     {NULL, NULL, 0, NULL}        /* Sentinel */
