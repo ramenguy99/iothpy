@@ -25,31 +25,6 @@
 
 #ifdef CMSG_LEN
 
-/* Support functions for the sendmsg() and recvmsg[_into]() methods.
-   Currently, these methods are only compiled if the RFC 2292/3542
-   CMSG_LEN() macro is available.  Older systems seem to have used
-   sizeof(struct cmsghdr) + (length) where CMSG_LEN() is used now, so
-   it may be possible to define CMSG_LEN() that way if it's not
-   provided.  Some architectures might need extra padding after the
-   cmsghdr, however, and CMSG_LEN() would have to take account of
-   this. */
-/* If length is in range, set *result to CMSG_LEN(length) and return
-   true; otherwise, return false. */
-static int
-get_CMSG_LEN(size_t length, size_t *result)
-{
-    size_t tmp;
-
-    if (length > (SOCKLEN_T_LIMIT - CMSG_LEN(0)))
-        return 0;
-    tmp = CMSG_LEN(length);
-    if (tmp > SOCKLEN_T_LIMIT || tmp < length)
-        return 0;
-    *result = tmp;
-    return 1;
-}
-
-
 /* Python interface to CMSG_LEN(length). */
 
 static PyObject *
@@ -80,23 +55,6 @@ is outside the permissible range of values.");
 
 
 #ifdef CMSG_SPACE
-/* If length is in range, set *result to CMSG_SPACE(length) and return
-   true; otherwise, return false. */
-static int
-get_CMSG_SPACE(size_t length, size_t *result)
-{
-    size_t tmp;
-
-    /* Use CMSG_SPACE(1) here in order to take account of the padding
-       necessary before *and* after the data. */
-    if (length > (SOCKLEN_T_LIMIT - CMSG_SPACE(1)))
-        return 0;
-    tmp = CMSG_SPACE(length);
-    if (tmp > SOCKLEN_T_LIMIT || tmp < length)
-        return 0;
-    *result = tmp;
-    return 1;
-}
 
 /* Python interface to CMSG_SPACE(length). */
 

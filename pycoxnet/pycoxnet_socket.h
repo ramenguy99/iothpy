@@ -29,7 +29,8 @@ extern PyObject *socket_timeout;
 extern _PyTime_t defaulttimeout;
 
 int socket_parse_timeout(_PyTime_t *timeout, PyObject *timeout_obj);
-
+int get_CMSG_LEN(size_t length, size_t *result);
+int get_CMSG_SPACE(size_t length, size_t *result);
 
 #if INT_MAX > 0x7fffffff
 #define SOCKLEN_T_LIMIT 0x7fffffff

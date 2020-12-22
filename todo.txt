@@ -1,3 +1,11 @@
-_recvmsg recvfrom recvmsgfrom sendmsg sendto sendmsgto
+Da chiedere:
 _rename di tutte le robe
-_ioth_linksetupdown, ioth_iproute_add
+_chiedere cosa fare con le costanti e utilities 
+
+Da fare:
+_doc socket methods (dario fino a send, lorenzo da send in po) 
+_linkgetadd linksetadd, (lorenzo)
+_iproute add e del (dario)
+_override di altre funzioni -> (get/set default timeout, if_nametoindex) (dario)
+
+

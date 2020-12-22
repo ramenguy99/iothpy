@@ -19,5 +19,10 @@ def override_socket_module(stack):
         def __init__(self, family=-1, type=-1, proto=-1, fileno=None):
            socket_py.__init__(self, stack, family, type, proto, fileno)
 
+
     socket.__dict__["socket"] = my_socket
+    socket.__dict__["getdefaulttimeout"] = getdefaulttimeout
+    socket.getdefaulttimeout()
+
+
 

@@ -1360,58 +1360,391 @@ done:
     return res;
 }
 
+
+
+#ifdef CMSG_LEN
+/* If length is in range, set *result to CMSG_LEN(length) and return
+   true; otherwise, return false. */
+int
+get_CMSG_LEN(size_t length, size_t *result)
+{
+    size_t tmp;
+
+    if (length > (SOCKLEN_T_LIMIT - CMSG_LEN(0)))
+        return 0;
+    tmp = CMSG_LEN(length);
+    if (tmp > SOCKLEN_T_LIMIT || tmp < length)
+        return 0;
+    *result = tmp;
+    return 1;
+}
+
+#ifdef CMSG_SPACE
+/* If length is in range, set *result to CMSG_SPACE(length) and return
+   true; otherwise, return false. */
+int
+get_CMSG_SPACE(size_t length, size_t *result)
+{
+    size_t tmp;
+
+    /* Use CMSG_SPACE(1) here in order to take account of the padding
+       necessary before *and* after the data. */
+    if (length > (SOCKLEN_T_LIMIT - CMSG_SPACE(1)))
+        return 0;
+    tmp = CMSG_SPACE(length);
+    if (tmp > SOCKLEN_T_LIMIT || tmp < length)
+        return 0;
+    *result = tmp;
+    return 1;
+}
+#endif
+#endif
+
+struct sock_sendto_ctx {
+    char *buf;
+    Py_ssize_t len;
+    int flags;
+    int addrlen;
+    struct sockaddr* addrbuf;
+    Py_ssize_t result;
+};
+
+static int
+sock_sendto_impl(socket_object *s, void *data)
+{
+    struct sock_sendto_ctx *ctx = data;
+
+    ctx->result = ioth_sendto(s->fd, ctx->buf, ctx->len, ctx->flags, ctx->addrbuf, ctx->addrlen);
+    return ctx->result >= 0;
+}
+
+/* s.sendto(data, [flags,] sockaddr) method */
+
+static PyObject *
+sock_sendto(PyObject* self, PyObject *args)
+{
+    socket_object* s = (socket_object*)self;
+    
+    Py_buffer pbuf;
+    PyObject *addro;
+    Py_ssize_t arglen;
+    struct sockaddr_storage addrbuf;
+    int addrlen, flags;
+    struct sock_sendto_ctx ctx;
+
+    flags = 0;
+    arglen = PyTuple_Size(args);
+    switch (arglen) {
+        case 2:
+            if (!PyArg_ParseTuple(args, "y*O:sendto", &pbuf, &addro)) {
+                return NULL;
+            }
+            break;
+        case 3:
+            if (!PyArg_ParseTuple(args, "y*iO:sendto", &pbuf, &flags, &addro)) {
+                return NULL;
+            }
+            break;
+        default:
+            PyErr_Format(PyExc_TypeError, "sendto() takes 2 or 3 arguments (%zd given)", arglen);
+            return NULL;
+    }
+
+    if(!get_sockaddr_from_tuple("sendto", s, addro, (struct sockaddr*)&addrbuf, &addrlen)) {
+        PyBuffer_Release(&pbuf);
+        return NULL;
+    }
+
+    ctx.buf = pbuf.buf;
+    ctx.len = pbuf.len;
+    ctx.flags = flags;
+    ctx.addrlen = addrlen;
+    ctx.addrbuf = (struct sockaddr*)&addrbuf;
+    if (sock_call(s, 1, sock_sendto_impl, &ctx, 0, NULL, s->sock_timeout) < 0) {
+        PyBuffer_Release(&pbuf);
+        return NULL;
+    }
+    PyBuffer_Release(&pbuf);
+
+    return PyLong_FromSsize_t(ctx.result);
+}
+
 PyDoc_STRVAR(sendto_doc,
 "sendto(data[, flags], address) -> count\n\
 \n\
 Like send(data, flags) but allows specifying the destination address.\n\
 For IP sockets, the address is a pair (hostaddr, port).");
 
+
+/* The sendmsg() and recvmsg[_into]() methods require a working
+   CMSG_LEN().  See the comment near get_CMSG_LEN(). */
+#ifdef CMSG_LEN
+struct sock_sendmsg_ctx {
+    struct msghdr *msg;
+    int flags;
+    ssize_t result;
+};
+
+static int
+sock_sendmsg_iovec(socket_object *s, PyObject *data_arg,
+                   struct msghdr *msg,
+                   Py_buffer **databufsout, Py_ssize_t *ndatabufsout) {
+    Py_ssize_t ndataparts, ndatabufs = 0;
+    int result = -1;
+    struct iovec *iovs = NULL;
+    PyObject *data_fast = NULL;
+    Py_buffer *databufs = NULL;
+
+    /* Fill in an iovec for each message part, and save the Py_buffer
+       structs to release afterwards. */
+    data_fast = PySequence_Fast(data_arg,
+                                "sendmsg() argument 1 must be an "
+                                "iterable");
+    if (data_fast == NULL) {
+        goto finally;
+    }
+
+    ndataparts = PySequence_Fast_GET_SIZE(data_fast);
+    if (ndataparts > INT_MAX) {
+        PyErr_SetString(PyExc_OSError, "sendmsg() argument 1 is too long");
+        goto finally;
+    }
+
+    msg->msg_iovlen = ndataparts;
+    if (ndataparts > 0) {
+        iovs = PyMem_New(struct iovec, ndataparts);
+        if (iovs == NULL) {
+            PyErr_NoMemory();
+            goto finally;
+        }
+        msg->msg_iov = iovs;
+
+        databufs = PyMem_New(Py_buffer, ndataparts);
+        if (databufs == NULL) {
+            PyErr_NoMemory();
+            goto finally;
+        }
+    }
+    for (; ndatabufs < ndataparts; ndatabufs++) {
+        if (!PyArg_Parse(PySequence_Fast_GET_ITEM(data_fast, ndatabufs),
+                         "y*;sendmsg() argument 1 must be an iterable of "
+                         "bytes-like objects",
+                         &databufs[ndatabufs]))
+            goto finally;
+        iovs[ndatabufs].iov_base = databufs[ndatabufs].buf;
+        iovs[ndatabufs].iov_len = databufs[ndatabufs].len;
+    }
+    result = 0;
+  finally:
+    *databufsout = databufs;
+    *ndatabufsout = ndatabufs;
+    Py_XDECREF(data_fast);
+    return result;
+}
+
+static int
+sock_sendmsg_impl(socket_object *s, void *data)
+{
+    struct sock_sendmsg_ctx *ctx = data;
+
+    ctx->result = ioth_sendmsg(s->fd, ctx->msg, ctx->flags);
+    return (ctx->result >= 0);
+}
+
+/* s.sendmsg(buffers[, ancdata[, flags[, address]]]) method */
+
 static PyObject *
-sock_sendto(PyObject *self, PyObject *args)
+sock_sendmsg(PyObject* self, PyObject *args)
 {
     socket_object* s = (socket_object*)self;
-    Py_buffer pbuf;
-    PyObject *addro;
-    Py_ssize_t arglen;
 
-    int flags;
-
-    flags = 0;
-    arglen = PyTuple_Size(args);
-
-    switch(arglen) {
-        case 2:
-            if(!PyArg_ParseTuple(args, "y*O:sendto", &pbuf, &addro))
-                return NULL;
-            break;
-        case 3:
-            if(!PyArg_ParseTuple(args, "y*iO:sendto", &pbuf, &flags, &addro))
-                return NULL;
-            break;
-        default:
-            PyErr_Format(PyExc_TypeError, "sendto() takes 2 or 3 arguments (%zd given)", arglen);
-            return NULL;
-
-    }
-
-
+    Py_ssize_t i, ndatabufs = 0, ncmsgs, ncmsgbufs = 0;
+    Py_buffer *databufs = NULL;
     struct sockaddr_storage addrbuf;
-    socklen_t addrlen;
-    if(!get_sockaddr_from_tuple("sendto", s, addro, (struct sockaddr*)&addrbuf, &addrlen))
-        return NULL;
-    
-    ssize_t res;
-    Py_BEGIN_ALLOW_THREADS
-    res = ioth_sendto(s->fd, pbuf.buf, pbuf.len, flags, (struct sockaddr*)&addrbuf, addrlen);
-    Py_END_ALLOW_THREADS
+    struct msghdr msg;
+    struct cmsginfo {
+        int level;
+        int type;
+        Py_buffer data;
+    } *cmsgs = NULL;
+    void *controlbuf = NULL;
+    size_t controllen, controllen_last;
+    int addrlen, flags = 0;
+    PyObject *data_arg, *cmsg_arg = NULL, *addr_arg = NULL,
+        *cmsg_fast = NULL, *retval = NULL;
+    struct sock_sendmsg_ctx ctx;
 
-    if(res == -1){
-        PyErr_SetFromErrno(PyExc_OSError);
+    if (!PyArg_ParseTuple(args, "O|OiO:sendmsg",
+                          &data_arg, &cmsg_arg, &flags, &addr_arg)) {
         return NULL;
     }
 
-    return PyLong_FromSsize_t(res);
+    memset(&msg, 0, sizeof(msg));
+
+    /* Parse destination address. */
+    if (addr_arg != NULL && addr_arg != Py_None) {
+
+        if(!get_sockaddr_from_tuple("sendmsg", s, addr_arg, (struct sockaddr*)&addrbuf, &addrlen))
+        {
+            goto finally;
+        }
+        msg.msg_name = &addrbuf;
+        msg.msg_namelen = addrlen;
+    }
+
+    /* Fill in an iovec for each message part, and save the Py_buffer
+       structs to release afterwards. */
+    if (sock_sendmsg_iovec(s, data_arg, &msg, &databufs, &ndatabufs) == -1) {
+        goto finally;
+    }
+
+    if (cmsg_arg == NULL)
+        ncmsgs = 0;
+    else {
+        if ((cmsg_fast = PySequence_Fast(cmsg_arg,
+                                         "sendmsg() argument 2 must be an "
+                                         "iterable")) == NULL)
+            goto finally;
+        ncmsgs = PySequence_Fast_GET_SIZE(cmsg_fast);
+    }
+
+#ifndef CMSG_SPACE
+    if (ncmsgs > 1) {
+        PyErr_SetString(PyExc_OSError,
+                        "sending multiple control messages is not supported "
+                        "on this system");
+        goto finally;
+    }
+#endif
+    /* Save level, type and Py_buffer for each control message,
+       and calculate total size. */
+    if (ncmsgs > 0 && (cmsgs = PyMem_New(struct cmsginfo, ncmsgs)) == NULL) {
+        PyErr_NoMemory();
+        goto finally;
+    }
+    controllen = controllen_last = 0;
+    while (ncmsgbufs < ncmsgs) {
+        size_t bufsize, space;
+
+        if (!PyArg_Parse(PySequence_Fast_GET_ITEM(cmsg_fast, ncmsgbufs),
+                         "(iiy*):[sendmsg() ancillary data items]",
+                         &cmsgs[ncmsgbufs].level,
+                         &cmsgs[ncmsgbufs].type,
+                         &cmsgs[ncmsgbufs].data))
+            goto finally;
+        bufsize = cmsgs[ncmsgbufs++].data.len;
+
+#ifdef CMSG_SPACE
+        if (!get_CMSG_SPACE(bufsize, &space)) {
+#else
+        if (!get_CMSG_LEN(bufsize, &space)) {
+#endif
+            PyErr_SetString(PyExc_OSError, "ancillary data item too large");
+            goto finally;
+        }
+        controllen += space;
+        if (controllen > SOCKLEN_T_LIMIT || controllen < controllen_last) {
+            PyErr_SetString(PyExc_OSError, "too much ancillary data");
+            goto finally;
+        }
+        controllen_last = controllen;
+    }
+
+    /* Construct ancillary data block from control message info. */
+    if (ncmsgbufs > 0) {
+        struct cmsghdr *cmsgh = NULL;
+
+        controlbuf = PyMem_Malloc(controllen);
+        if (controlbuf == NULL) {
+            PyErr_NoMemory();
+            goto finally;
+        }
+        msg.msg_control = controlbuf;
+
+        msg.msg_controllen = controllen;
+
+        /* Need to zero out the buffer as a workaround for glibc's
+           CMSG_NXTHDR() implementation.  After getting the pointer to
+           the next header, it checks its (uninitialized) cmsg_len
+           member to see if the "message" fits in the buffer, and
+           returns NULL if it doesn't.  Zero-filling the buffer
+           ensures that this doesn't happen. */
+        memset(controlbuf, 0, controllen);
+
+        for (i = 0; i < ncmsgbufs; i++) {
+            size_t msg_len, data_len = cmsgs[i].data.len;
+            int enough_space = 0;
+
+            cmsgh = (i == 0) ? CMSG_FIRSTHDR(&msg) : CMSG_NXTHDR(&msg, cmsgh);
+            if (cmsgh == NULL) {
+                PyErr_Format(PyExc_RuntimeError,
+                             "unexpected NULL result from %s()",
+                             (i == 0) ? "CMSG_FIRSTHDR" : "CMSG_NXTHDR");
+                goto finally;
+            }
+            if (!get_CMSG_LEN(data_len, &msg_len)) {
+                PyErr_SetString(PyExc_RuntimeError,
+                                "item size out of range for CMSG_LEN()");
+                goto finally;
+            }
+            if (cmsg_min_space(&msg, cmsgh, msg_len)) {
+                size_t space;
+
+                cmsgh->cmsg_len = msg_len;
+                if (get_cmsg_data_space(&msg, cmsgh, &space))
+                    enough_space = (space >= data_len);
+            }
+            if (!enough_space) {
+                PyErr_SetString(PyExc_RuntimeError,
+                                "ancillary data does not fit in calculated "
+                                "space");
+                goto finally;
+            }
+            cmsgh->cmsg_level = cmsgs[i].level;
+            cmsgh->cmsg_type = cmsgs[i].type;
+            memcpy(CMSG_DATA(cmsgh), cmsgs[i].data.buf, data_len);
+        }
+    }
+
+    ctx.msg = &msg;
+    ctx.flags = flags;
+    if (sock_call(s, 1, sock_sendmsg_impl, &ctx, 0, NULL, s->sock_timeout) < 0)
+        goto finally;
+
+    retval = PyLong_FromSsize_t(ctx.result);
+
+finally:
+    PyMem_Free(controlbuf);
+    for (i = 0; i < ncmsgbufs; i++)
+        PyBuffer_Release(&cmsgs[i].data);
+    PyMem_Free(cmsgs);
+    Py_XDECREF(cmsg_fast);
+    PyMem_Free(msg.msg_iov);
+    for (i = 0; i < ndatabufs; i++) {
+        PyBuffer_Release(&databufs[i]);
+    }
+    PyMem_Free(databufs);
+    return retval;
 }
+
+PyDoc_STRVAR(sendmsg_doc,
+"sendmsg(buffers[, ancdata[, flags[, address]]]) -> count\n\
+\n\
+Send normal and ancillary data to the socket, gathering the\n\
+non-ancillary data from a series of buffers and concatenating it into\n\
+a single message.  The buffers argument specifies the non-ancillary\n\
+data as an iterable of bytes-like objects (e.g. bytes objects).\n\
+The ancdata argument specifies the ancillary data (control messages)\n\
+as an iterable of zero or more tuples (cmsg_level, cmsg_type,\n\
+cmsg_data), where cmsg_level and cmsg_type are integers specifying the\n\
+protocol level and protocol-specific type respectively, and cmsg_data\n\
+is a bytes-like object holding the associated data.  The flags\n\
+argument defaults to 0 and has the same meaning as for send().  If\n\
+address is supplied and not None, it sets a destination address for\n\
+the message.  The return value is the number of bytes of non-ancillary\n\
+data sent.");
+#endif    /* CMSG_LEN */
+
 
 static PyObject *
 sock_close(PyObject *self, PyObject *args)
@@ -1430,12 +1763,6 @@ sock_close(PyObject *self, PyObject *args)
     //Return none if no errors
     Py_RETURN_NONE;
 }
-
-
-struct sock_connect_ctx {
-    
-};
-
 
 static int
 sock_connect_impl(socket_object* s, void* Py_UNUSED(data))
@@ -1651,6 +1978,22 @@ done:
 
     Py_RETURN_NONE;
 }
+
+static PyObject *
+sock_detach(PyObject* self, PyObject *Py_UNUSED(ignored))
+{
+    socket_object* s = (socket_object*)self;
+    int fd = s->fd;
+    s->fd = -1;
+    return PyLong_FromLong(fd);
+}
+
+PyDoc_STRVAR(detach_doc,
+"detach()\n\
+\n\
+Close the socket object without closing the underlying file descriptor.\n\
+The object cannot be used after this call, but the file descriptor\n\
+can be reused for other purposes.  The file descriptor is returned.");
 
 static PyObject *
 sock_shutdown(PyObject *self, PyObject *arg)
@@ -1892,16 +2235,17 @@ static PyMethodDef socket_methods[] =
     {"recv_into", (PyCFunction)sock_recv_into, METH_VARARGS | METH_KEYWORDS, "recv into size bytes as string from socket indentified by fd"},
     {"recvfrom", sock_recvfrom, METH_VARARGS, recvfrom_doc},
     {"recvfrom_into", (PyCFunction)sock_recvfrom_into, METH_VARARGS | METH_KEYWORDS, recvfrom_into_doc},
+    {"send",    sock_send,    METH_VARARGS, "send string to socket indentified by fd"},  
+    {"sendall",    sock_sendall,    METH_VARARGS, "send all string to socket indentified by fd"},  
+    {"sendto", sock_sendto, METH_VARARGS, sendto_doc},
 
 #ifdef CMSG_LEN
     {"recvmsg",      sock_recvmsg, METH_VARARGS, recvmsg_doc},
     {"recvmsg_into", sock_recvmsg_into, METH_VARARGS, recvmsg_into_doc,},
-//    {"sendmsg",      sock_sendmsg, METH_VARARGS, sendmsg_doc},
+    //{"sendmsg",      sock_sendmsg, METH_VARARGS, sendmsg_doc},
 #endif
 
-    {"send",    sock_send,    METH_VARARGS, "send string to socket indentified by fd"},  
-    {"sendall",    sock_sendall,    METH_VARARGS, "send all string to socket indentified by fd"},  
-    {"sendto", sock_sendto, METH_VARARGS, sendto_doc},
+    {"detach",  sock_detach, METH_NOARGS, detach_doc},
     {"fileno",  sock_fileno,    METH_NOARGS, "returns the socket fd"}, 
     {"getsockopt", sock_getsockopt, METH_VARARGS, "get socket option"},
     {"setsockopt", sock_setsockopt, METH_VARARGS, "set socket option"},
@@ -1912,7 +2256,6 @@ static PyMethodDef socket_methods[] =
     {"getblocking", sock_getblocking, METH_NOARGS, getblocking_doc},
     {"settimeout",  sock_settimeout, METH_O, settimeout_doc},
     {"gettimeout",  sock_gettimeout, METH_NOARGS, gettimeout_doc},
-
 
 
     {NULL, NULL} /* sentinel */
