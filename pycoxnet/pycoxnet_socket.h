@@ -26,3 +26,6 @@ typedef struct socket_object
 
 extern PyTypeObject socket_type;
 extern PyObject *socket_timeout;
+extern _PyTime_t defaulttimeout;
+
+int socket_parse_timeout(_PyTime_t *timeout, PyObject *timeout_obj);

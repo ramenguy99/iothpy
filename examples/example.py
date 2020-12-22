@@ -13,20 +13,28 @@ stack.ipaddr_add(pycoxnet.AF_INET, addr, 24, if_index)
 stack.iproute_add(pycoxnet.AF_INET, None, 0, gw_addr)
 
 
+print(pycoxnet.getdefaulttimeout())
+pycoxnet.setdefaulttimeout(5)
+print(pycoxnet.getdefaulttimeout())
 
 s = stack.socket(pycoxnet.AF_INET, pycoxnet.SOCK_STREAM);
-print("Socket is blocking when created: ", s.getblocking());
-s.setblocking(False);
-print("Socket is blocking after setting to non blocking: ", s.getblocking());
-s.setblocking(True);
-print("Socket is blocking after resetting to blocking: ", s.getblocking());
+# print("Socket is blocking when created: ", s.getblocking());
+# s.setblocking(False);
+# print("Socket is blocking after setting to non blocking: ", s.getblocking());
+# s.setblocking(True);
+# print("Socket is blocking after resetting to blocking: ", s.getblocking());
 
 
 # Test that accept does not block
-s.setblocking(False)
+# s.setblocking(False)
 
 s.bind(('', 5000))
 s.listen(1)
+
+print(s.gettimeout())
+#s.settimeout(3)
+print(s.gettimeout())
+
 try:
     conn, addr = s.accept()
 except OSError as e:

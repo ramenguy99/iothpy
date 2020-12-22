@@ -23,7 +23,50 @@
 #include <libioth.h>
 
 
+/* Python API to getting and setting the default timeout value. */
+static PyObject *
+socket_getdefaulttimeout(PyObject *self, PyObject *Py_UNUSED(ignored))
+{
+    if (defaulttimeout < 0) {
+        Py_RETURN_NONE;
+    }
+    else {
+        double seconds = _PyTime_AsSecondsDouble(defaulttimeout);
+        return PyFloat_FromDouble(seconds);
+    }
+}
+
+PyDoc_STRVAR(getdefaulttimeout_doc,
+"getdefaulttimeout() -> timeout\n\
+\n\
+Returns the default timeout in seconds (float) for new socket objects.\n\
+A value of None indicates that new socket objects have no timeout.\n\
+When the socket module is first imported, the default is None.");
+
+static PyObject *
+socket_setdefaulttimeout(PyObject *self, PyObject *arg)
+{
+    _PyTime_t timeout;
+
+    if (socket_parse_timeout(&timeout, arg) < 0)
+        return NULL;
+
+    defaulttimeout = timeout;
+
+    Py_RETURN_NONE;
+}
+
+PyDoc_STRVAR(setdefaulttimeout_doc,
+"setdefaulttimeout(timeout)\n\
+\n\
+Set the default timeout in seconds (float) for new socket objects.\n\
+A value of None indicates that new socket objects have no timeout.\n\
+When the socket module is first imported, the default is None.");
+
+
 static PyMethodDef pycox_methods[] = {
+    {"getdefaulttimeout",  socket_getdefaulttimeout, METH_NOARGS, getdefaulttimeout_doc},
+    {"setdefaulttimeout",  socket_setdefaulttimeout, METH_O, setdefaulttimeout_doc},    
     {NULL, NULL, 0, NULL}        /* Sentinel */
 };
 

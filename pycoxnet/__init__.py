@@ -1,5 +1,5 @@
 from .socket_impl import socket_py
-from ._pycoxnet import stack_base
+from ._pycoxnet import stack_base, getdefaulttimeout, setdefaulttimeout
 
 # TODO: These utilities should probably be reimplemented in the pycoxnet c module and constants
 from socket import inet_aton, inet_ntoa, inet_ntop, inet_pton, ntohl, ntohs, htonl, htons, INADDR_ANY

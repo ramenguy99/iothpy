@@ -19,6 +19,37 @@
 
 #include <libioth.h>
 
+_PyTime_t defaulttimeout = _PYTIME_FROMSECONDS(-1);
+
+int socket_parse_timeout(_PyTime_t *timeout, PyObject *timeout_obj)
+{
+
+    _PyTime_t ms;
+    int overflow = 0;
+
+    if (timeout_obj == Py_None) {
+        *timeout = _PyTime_FromSeconds(-1);
+        return 0;
+    }
+
+    if (_PyTime_FromSecondsObject(timeout, timeout_obj, _PyTime_ROUND_TIMEOUT) < 0)
+        return -1;
+
+    if (*timeout < 0) {
+        PyErr_SetString(PyExc_ValueError, "Timeout value out of range");
+        return -1;
+    }
+
+    ms = _PyTime_AsMilliseconds(*timeout, _PyTime_ROUND_TIMEOUT);
+    overflow |= (ms > INT_MAX);
+    if (overflow) {
+        PyErr_SetString(PyExc_OverflowError, "timeout doesn't fit into C timeval");
+        return -1;
+    }
+
+    return 0;
+}
+
 /* Convert IPv4 sockaddr to a Python str. */
 static PyObject *
 make_ipv4_addr(struct sockaddr_in *addr)
@@ -1034,6 +1065,7 @@ sock_fileno(PyObject *self, PyObject *args)
     return PyLong_FromLong(s->fd);
 }
 
+
 static PyObject *
 sock_getsockopt(PyObject *self, PyObject *args)
 {
@@ -1278,6 +1310,82 @@ PyDoc_STRVAR(getblocking_doc,
 \n\
 Returns True if socket is in blocking mode, or False if it\n\
 is in non-blocking mode.");
+
+/* s.settimeout(timeout) method.  Argument:
+   None -- no timeout, blocking mode; same as setblocking(True)
+   0.0  -- non-blocking mode; same as setblocking(False)
+   > 0  -- timeout mode; operations time out after timeout seconds
+   < 0  -- illegal; raises an exception
+*/
+static PyObject *
+sock_settimeout(PyObject *self, PyObject *arg)
+{
+    socket_object* s = (socket_object*)self;
+
+    _PyTime_t timeout;
+
+    if (socket_parse_timeout(&timeout, arg) < 0)
+        return NULL;
+
+    s->sock_timeout = timeout;
+
+    int block = timeout < 0;
+    /* Blocking mode for a Python socket object means that operations
+       like :meth:`recv` or :meth:`sendall` will block the execution of
+       the current thread until they are complete or aborted with a
+       `socket.timeout` or `socket.error` errors.  When timeout is `None`,
+       the underlying FD is in a blocking mode.  When timeout is a positive
+       number, the FD is in a non-blocking mode, and socket ops are
+       implemented with a `select()` call.
+       When timeout is 0.0, the FD is in a non-blocking mode.
+       This table summarizes all states in which the socket object and
+       its underlying FD can be:
+       ==================== ===================== ==============
+        `gettimeout()`       `getblocking()`       FD
+       ==================== ===================== ==============
+        ``None``             ``True``              blocking
+        ``0.0``              ``False``             non-blocking
+        ``> 0``              ``True``              non-blocking
+    */
+
+    if (internal_setblocking(s, block) == -1) {
+        return NULL;
+    }
+    Py_RETURN_NONE;
+}
+
+PyDoc_STRVAR(settimeout_doc,
+"settimeout(timeout)\n\
+\n\
+Set a timeout on socket operations.  'timeout' can be a float,\n\
+giving in seconds, or None.  Setting a timeout of None disables\n\
+the timeout feature and is equivalent to setblocking(1).\n\
+Setting a timeout of zero is the same as setblocking(0).");
+
+/* s.gettimeout() method.
+   Returns the timeout associated with a socket. */
+static PyObject *
+sock_gettimeout(PyObject *self, PyObject *Py_UNUSED(ignored))
+{
+    socket_object* s = (socket_object*)self;
+
+    if (s->sock_timeout < 0) {
+        Py_RETURN_NONE;
+    }
+    else {
+        double seconds = _PyTime_AsSecondsDouble(s->sock_timeout);
+        return PyFloat_FromDouble(seconds);
+    }
+}
+
+PyDoc_STRVAR(gettimeout_doc,
+"gettimeout() -> timeout\n\
+\n\
+Returns the timeout in seconds (float) associated with socket\n\
+operations. A timeout of None indicates that timeouts on socket\n\
+operations are disabled.");
+
+
 static PyMethodDef socket_methods[] = 
 {
     {"bind",    sock_bind,    METH_O,       "bind addr"},
@@ -1300,7 +1408,8 @@ static PyMethodDef socket_methods[] =
     {"getpeername", sock_getpeername, METH_NOARGS, "get peer name"},
     {"setblocking", sock_setblocking, METH_O, setblocking_doc},
     {"getblocking", sock_getblocking, METH_NOARGS, getblocking_doc},
-
+    {"settimeout",  sock_settimeout, METH_O, settimeout_doc},
+    {"gettimeout",  sock_gettimeout, METH_NOARGS, gettimeout_doc},
 
 
 
@@ -1327,24 +1436,67 @@ socket_repr(socket_object* self)
 }
 
 static int
+init_sockobject(socket_object *s, PyObject* stack, int fd, int family, int type, int proto)
+{
+    s->fd = fd;
+    s->family = family;
+    s->type = type;
+    s->proto = proto;
+
+    /* It's possible to pass SOCK_NONBLOCK and SOCK_CLOEXEC bit flags
+       on some OSes as part of socket.type.  We want to reset them here,
+       to make socket.type be set to the same value on all platforms.
+       Otherwise, simple code like 'if sock.type == SOCK_STREAM' is
+       not portable.
+    */
+#ifdef SOCK_NONBLOCK
+    s->type = s->type & ~SOCK_NONBLOCK;
+#endif
+#ifdef SOCK_CLOEXEC
+    s->type = s->type & ~SOCK_CLOEXEC;
+#endif
+
+#ifdef SOCK_NONBLOCK
+    if (type & SOCK_NONBLOCK)
+        s->sock_timeout = 0;
+    else
+#endif
+    {
+        s->sock_timeout = defaulttimeout;
+        if (defaulttimeout >= 0) {
+            if (internal_setblocking(s, 0) == -1) {
+                return -1;
+            }
+        }
+    }
+
+    s->stack = stack;
+    Py_INCREF(s->stack);
+
+    return 0;
+}
+
+static int
 socket_initobj(PyObject* self, PyObject* args, PyObject* kwds)
 {
     socket_object* s = (socket_object*)self;
-    s->family = AF_INET;
-    s->type = SOCK_STREAM;
-    s->proto = 0;
+
+    PyObject* stack;
+    int family = AF_INET;
+    int type = SOCK_STREAM;
+    int proto = 0;
 
     PyObject* fdobj = NULL;
     int fd = -1;
 
-    if(!PyArg_ParseTuple(args, "Oiii|O", &s->stack, &s->family, &s->type, &s->proto, &fdobj))
+    if(!PyArg_ParseTuple(args, "Oiii|O", &stack, &family, &type, &proto, &fdobj))
         return -1;
 
     /* Create a new socket */
     if(fdobj == NULL || fdobj == Py_None)
     {
-        s->fd = ioth_msocket(((struct stack_object*)s->stack)->stack, s->family, s->type, s->proto);
-        if(s->fd == -1)
+        fd = ioth_msocket(((struct stack_object*)stack)->stack, family, type, proto);
+        if(fd == -1)
         {
             PyErr_SetFromErrno(PyExc_OSError);
             return -1;
@@ -1366,10 +1518,14 @@ socket_initobj(PyObject* self, PyObject* args, PyObject* kwds)
             return -1;
         }
 
-        s->fd = fd;
+        fd = fd;
+    }
+    
+    if (init_sockobject(s, stack, fd, family, type, proto) == -1) {
+        ioth_close(fd);
+        return -1;
     }
 
-    Py_INCREF(s->stack);
     return 0;
 }
 
