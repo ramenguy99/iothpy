@@ -298,71 +298,65 @@ check_ip_buffer(int family, Py_buffer addr)
     it should not be freed.
 */
 static int
-parse_iproute_args(PyObject* args, int* out_family, Py_buffer* out_dst_addr, int* out_prefix_len, 
-                   Py_buffer* out_gw_addr)
+parse_iproute_args(PyObject* args, PyObject* kwargs, int* out_family, char* out_gw_buf,
+                   char** out_dst_bufp, int* out_dst_prefix, int* out_if_index) 
 {
-    int family;
-    PyObject* dst_addr_obj;
-    Py_buffer dst_addr, gw_addr;
-    int prefix_len;
+    int family = -1;
+    char* gw_str = NULL;
+    char* dst_str = NULL;
+    int dst_prefix = 0;
+    int if_index = 0;
+
+    static char* kwnames[] = { 
+        "", "", /* 2 required positional arguments */
+        "dst_addr", "dst_prefix", "ifindex"
+    };
+
 
     /* Parse arguments */
-    if(!PyArg_ParseTuple(args, "iOiy*", &family, &dst_addr_obj, &prefix_len, &gw_addr)) {
+    if(!PyArg_ParseTupleAndKeywords(args, kwargs, "is|sii", kwnames, &family, &gw_str, 
+                                    &dst_str,  &dst_prefix, &if_index)) {
         return 0;
     }
 
     /* Check family */
     if(family != AF_INET && family != AF_INET6) {
         PyErr_Format(PyExc_ValueError, "unknown address family %d", family);
-        PyBuffer_Release(&gw_addr);
         return 0;
     }
 
-    /* Check gw address length */
-    if(!check_ip_buffer(family, gw_addr)) {
-       PyErr_SetString(PyExc_ValueError, "invalid length of dst_addr");
-       PyBuffer_Release(&gw_addr);
-       return 0;
+    /* Convert string address to bytes */
+    if(inet_pton(family, gw_str, out_gw_buf) < 0) {
+        PyErr_SetString(PyExc_ValueError, "invalid gw_addr address string");
+        return 0;
     }
 
-    /* Fill dst_addr if not None */
-    dst_addr.buf = 0;
-    if(dst_addr_obj != Py_None) {
-        if (PyObject_GetBuffer(dst_addr_obj, &dst_addr, PyBUF_SIMPLE) != 0) {
-            PyErr_SetString(PyExc_Exception, "dst_addr must be bytes-like object or None");
-            PyBuffer_Release(&gw_addr);
+    if(dst_str) {
+        /* Convert string address to bytes */
+        if(inet_pton(family, gw_str, *out_dst_bufp) < 0) {
+            PyErr_SetString(PyExc_ValueError, "invalid dst_addr address string");
             return 0;
         }
-        if (!PyBuffer_IsContiguous(&dst_addr, 'C')) {
-            PyErr_SetString(PyExc_Exception, "dst_addr must be a contiguous buffer");
-            PyBuffer_Release(&dst_addr);
-            PyBuffer_Release(&gw_addr);
-            return 0;
-        }
-
-        /* Check dest address length */
-        if(!check_ip_buffer(family, dst_addr)) {
-            PyErr_SetString(PyExc_ValueError, "invalid length of dst_addr");
-            PyBuffer_Release(&dst_addr);
-            PyBuffer_Release(&gw_addr);
-            return 0;
-       }
+    } else {
+        *out_dst_bufp = NULL;
     }
 
     *out_family = family;
-    *out_prefix_len = prefix_len;
-    *out_dst_addr = dst_addr;
-    *out_gw_addr = gw_addr;
+    *out_dst_prefix = dst_prefix;
+    *out_if_index = if_index;
 
     return 1;
 }
 
-PyDoc_STRVAR(iproute_add_doc, "iproute_add(family, dst_addr, dst_prefixlen, gw_addr)\n\
+PyDoc_STRVAR(iproute_add_doc, "iproute_add(family, gw_addr, dst_addr = None, dst_prefix = 0, ifindex = 0)\n\
 \n\
-Add a static route to dst_addr/dst_prefixlen network through the gateway gw_addr. If dst_addr == None it adds a default route");
+Add a static route to dst_addr/dst_prefixlen network through the gateway gw_addr.\n\
+All addresses must be valid IPv4 or IPv6 strings.\n\
+If dst_addr == None it adds a default route.\n\
+If gw_addr is an IPv6 link local address, ifindex must be specified");
 
 static PyObject*
-stack_iproute_add(stack_object* self, PyObject* args)
+stack_iproute_add(stack_object* self, PyObject* args, PyObject* kwargs)
 {
     if(!self->stack) 
     {
@@ -371,33 +365,31 @@ stack_iproute_add(stack_object* self, PyObject* args)
     }
 
     int family;
-    Py_buffer dst_addr, gw_addr;
-    int prefix_len;
+    char gw_buf[sizeof(struct in6_addr)];
+    char dst_buf[sizeof(struct in6_addr)];
+    char* dst_bufp = dst_buf;
+    int dst_prefix;
+    int if_index;
 
-    if(!parse_iproute_args(args, &family, &dst_addr, &prefix_len, &gw_addr))
+    if(!parse_iproute_args(args, kwargs, &family, gw_buf, &dst_bufp, &dst_prefix, &if_index))
         return NULL;
 
-    if(ioth_iproute_add(self->stack, family, dst_addr.buf, prefix_len, gw_addr.buf) < 0) {
+    if(ioth_iproute_add(self->stack, family, dst_buf, dst_prefix, gw_buf, if_index) < 0) {
         PyErr_SetString(PyExc_Exception, "failed to add ip route");
-        if(dst_addr.buf)
-            PyBuffer_Release(&dst_addr);
-        PyBuffer_Release(&gw_addr);
         return NULL;       
     }
-
-    if(dst_addr.buf)
-        PyBuffer_Release(&dst_addr);
-    PyBuffer_Release(&gw_addr);
 
     Py_RETURN_NONE;
 }
 
-PyDoc_STRVAR(iproute_del_doc, "iproute_del(family, dst_addr, dst_prefixlen, gw_addr)\n\
+PyDoc_STRVAR(iproute_del_doc, "iproute_del(family, gw_addr, dst_addr = None, dst_prefix = 0, ifindex = 0)\n\
 \n\
-Remove the static route to dst_addr/dst_prefixlen network through the gateway gw_addr.");
+Delete the static route to dst_addr/dst_prefixlen network through the gateway gw_addr.\n\
+If dst_addr == None it deletes the default route.\n\
+If gw_addr is an IPv6 link local address, ifindex must be specified");
 
 static PyObject*
-stack_iproute_del(stack_object* self, PyObject* args)
+stack_iproute_del(stack_object* self, PyObject* args, PyObject* kwargs)
 {
     if(!self->stack) 
     {
@@ -405,40 +397,68 @@ stack_iproute_del(stack_object* self, PyObject* args)
         return NULL;
     }
 
-    int family;
-    Py_buffer dst_addr, gw_addr;
-    int prefix_len;
 
-    if(!parse_iproute_args(args, &family, &dst_addr, &prefix_len, &gw_addr))
+    int family;
+    char gw_buf[sizeof(struct in6_addr)];
+    char dst_buf[sizeof(struct in6_addr)];
+    char* dst_bufp = dst_buf;
+    int dst_prefix;
+    int if_index;
+
+    if(!parse_iproute_args(args, kwargs, &family, gw_buf, &dst_bufp, &dst_prefix, &if_index))
         return NULL;
 
-    if(ioth_iproute_del(self->stack, family, dst_addr.buf, prefix_len, gw_addr.buf) < 0) {
-        PyErr_SetString(PyExc_Exception, "failed to remove ip route");
-        if(dst_addr.buf)
-            PyBuffer_Release(&dst_addr);
-        PyBuffer_Release(&gw_addr);
+    if(ioth_iproute_del(self->stack, family, dst_buf, dst_prefix, gw_buf, if_index) < 0) {
+        PyErr_SetString(PyExc_Exception, "failed to del ip route");
         return NULL;       
     }
-
-    if(dst_addr.buf)
-        PyBuffer_Release(&dst_addr);
-    PyBuffer_Release(&gw_addr);
 
     Py_RETURN_NONE;
 }
 
 
+/* 
+    Parse arguments to ip_addr_add and ip_addr_del
+    Returns 0 and raises an exception if the arguments are invalid
+*/
+static int
+parse_ipaddr_args(PyObject* args, int* out_af, char* out_addr, int* out_prefix_len, int* out_if_index) 
+{
+    char* addr_str = NULL;
+
+    /* Parse arguments */
+    if(!PyArg_ParseTuple(args, "isii", out_af, &addr_str, out_prefix_len, out_if_index)) {
+        return 0;
+    }
+
+    int af = *out_af;
+   
+    /* Check family */
+    if(af != AF_INET && af != AF_INET6) {
+        PyErr_Format(PyExc_ValueError, "invalid address family %d", af);
+        return 0;
+    }
+
+    /* Convert string address to bytes */
+    if(inet_pton(af, addr_str, out_addr) < 0) {
+        PyErr_SetString(PyExc_ValueError, "invalid address string");
+        return 0;
+    }
+
+    return 1;
+}
 
 PyDoc_STRVAR(ipaddr_add_doc, "ipaddr_add(family, addr, prefix_len, if_index)\n\
 \n\
 Add an IP address to the interface if_index.\n\
-Supports IPv4 (family == AF_INET) and IPv6 (family == AF_INET6)");
+Supports IPv4 (family == AF_INET) and IPv6 (family == AF_INET6),\n\
+addr must be a string representing a valid ipv4 or ipv6 address respectively");
 
 static PyObject*
 stack_ipaddr_add(stack_object* self, PyObject* args)
 {
     int af;
-    Py_buffer packed_ip;
+    char* addr_str = NULL;
     int prefix_len;
     int if_index;
 
@@ -449,43 +469,29 @@ stack_ipaddr_add(stack_object* self, PyObject* args)
     }
 
     /* Parse arguments */
-    if(!PyArg_ParseTuple(args, "iy*ii:ipaddr_add", &af, &packed_ip, &prefix_len, &if_index)) {
-        return NULL;
-    }
-   
-    /* Check family */
-    if(af != AF_INET && af != AF_INET6) {
-        PyErr_Format(PyExc_ValueError, "unknown address family %d", af);
-        PyBuffer_Release(&packed_ip);
+    char buf[sizeof(struct in6_addr)];
+    if(!parse_ipaddr_args(args, &af, buf, &prefix_len, &if_index)) {
         return NULL;
     }
 
-    /* Check address length */
-    if(!check_ip_buffer(af, packed_ip)) {
-       PyErr_SetString(PyExc_ValueError, "invalid length of ip address");
-       PyBuffer_Release(&packed_ip);
-       return NULL;
-    }
-
-    if(ioth_ipaddr_add(self->stack, af, packed_ip.buf, prefix_len, if_index) < 0) {
+    if(ioth_ipaddr_add(self->stack, af, buf, prefix_len, if_index) < 0) {
         PyErr_SetString(PyExc_Exception, "failed to add ip address to interface");
-        PyBuffer_Release(&packed_ip);
         return NULL;
     }
 
-    PyBuffer_Release(&packed_ip);
     Py_RETURN_NONE;
 }
 
 PyDoc_STRVAR(ipaddr_del_doc, "ipaddr_del(family, addr, prefix_len, if_index)\n\
 \n\
-delete an IP address to the interface if_index.\n\
-Supports IPv4 (family == AF_INET) and IPv6 (family == AF_INET6)");
+Delete an IP address from the interface if_index.\n\
+Supports IPv4 (family == AF_INET) and IPv6 (family == AF_INET6),\n\
+addr must be a string representing a valid ipv4 or ipv6 address respectively");
 
 static PyObject*
 stack_ipaddr_del(stack_object *self, PyObject *args){
     int af;
-    Py_buffer packed_ip;
+    char* addr_str = NULL;
     int prefix_len;
     int if_index;
 
@@ -496,39 +502,24 @@ stack_ipaddr_del(stack_object *self, PyObject *args){
     }
 
     /* Parse arguments */
-    if(!PyArg_ParseTuple(args, "iy*ii:ipaddr_del", &af, &packed_ip, &prefix_len, &if_index)) {
-        return NULL;
-    }
-   
-    /* Check family */
-    if(af != AF_INET && af != AF_INET6) {
-        PyErr_Format(PyExc_ValueError, "unknown address family %d", af);
-        PyBuffer_Release(&packed_ip);
+    char buf[sizeof(struct in6_addr)];
+    if(!parse_ipaddr_args(args, &af, buf, &prefix_len, &if_index)) {
         return NULL;
     }
 
-    /* Check address length */
-    if(!check_ip_buffer(af, packed_ip)) {
-       PyErr_SetString(PyExc_ValueError, "invalid length of ip address");
-       PyBuffer_Release(&packed_ip);
-       return NULL;
-    }
-
-    if(ioth_ipaddr_del(self->stack, af, packed_ip.buf, prefix_len, if_index) < 0) {
-        PyErr_SetString(PyExc_Exception, "failed to delete ip address to interface");
-        PyBuffer_Release(&packed_ip);
+    if(ioth_ipaddr_del(self->stack, af, buf, prefix_len, if_index) < 0) {
+        PyErr_SetString(PyExc_Exception, "failed to delete ip address from interface");
         return NULL;
     }
 
-    PyBuffer_Release(&packed_ip);
     Py_RETURN_NONE;
 }
 
 PyDoc_STRVAR(iplink_add_doc, "iplink_add(ifindex, type, data, ifname)\n\
 \n\
 This function adds a new link of type type,  named  ifname.  The\n\
-value of data depends on the type of link and can be optional. A de‐\n\
-fault interface name is assigned if ifname is missing.  The  link  is\n\
+value of data depends on the type of link and can be optional. \n\
+A default interface name is assigned if ifname is missing.  The  link  is\n\
 created with a given index when ifindex is positive.\n\
 \n\
 iplink_add can return the (positive)  ifindex  of  the  newly\n\
@@ -565,8 +556,8 @@ stack_iplink_add(stack_object *self, PyObject *args){
 
 PyDoc_STRVAR(iplink_del_doc," iplink_del(ifname = "", ifindex = 0)\n\
 This  function  removes  a  link.  The link to be deleted can be\n\
-identified by the named paramenter ifname or by the named parameter (ifindex).  Ei‐\n\
-ther  ifindex  can be zero or ifname can be empty. It is possible\n\
+identified by the named paramenter ifname or by the named parameter (ifindex).\n\
+Either  ifindex  can be zero or ifname can be empty. It is possible\n\
 to use both ifindex and ifname to identify the  link.  An  error\n\
 may occur if the parameters are inconsistent.");
 
@@ -621,12 +612,13 @@ static PyMethodDef stack_methods[] = {
 
     /* Network interface configuration */
     {"linksetupdown", (PyCFunction)stack_linksetupdown, METH_VARARGS, linksetupdown_doc},
-    {"ipaddr_add", (PyCFunction)stack_ipaddr_add, METH_VARARGS, ipaddr_add_doc},
-    {"ipaddr_del", (PyCFunction)stack_ipaddr_del, METH_VARARGS, ipaddr_del_doc},
     {"iplink_add", (PyCFunction)stack_iplink_add, METH_VARARGS, iplink_add_doc},
     {"iplink_del", (PyCFunction)stack_iplink_del, METH_VARARGS | METH_KEYWORDS, iplink_del_doc},
-    {"iproute_add", (PyCFunction)stack_iproute_add, METH_VARARGS, iproute_add_doc},
-    {"iproute_del", (PyCFunction)stack_iproute_del, METH_VARARGS, iproute_del_doc},
+
+    {"ipaddr_add", (PyCFunction)stack_ipaddr_add, METH_VARARGS, ipaddr_add_doc},
+    {"ipaddr_del", (PyCFunction)stack_ipaddr_del, METH_VARARGS, ipaddr_del_doc},
+    {"iproute_add", (PyCFunction)stack_iproute_add, METH_VARARGS | METH_KEYWORDS, iproute_add_doc},
+    {"iproute_del", (PyCFunction)stack_iproute_del, METH_VARARGS | METH_KEYWORDS, iproute_del_doc},
 
     {NULL, NULL} /* sentinel */
 };

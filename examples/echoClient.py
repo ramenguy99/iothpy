@@ -5,28 +5,23 @@ import pycoxnet
 import time
 import select
 
-if(len(sys.argv) != 6):
+if(len(sys.argv) != 2):
     name = sys.argv[0]
-    print("Usage: {0} vdeurl client_ip prefix server_ip port\ne,g: {1} vxvde://234.0.0.1 10.0.0.2 24 10.0.0.1 5000\n\n".format(name, name))
+    print("Usage: {0} vdeurl\ne,g: {1} vxvde://234.0.0.1\n\n".format(name, name))
     exit(1)
 
 stack  = pycoxnet.Stack("picox", sys.argv[1])
-
-prefix = int(sys.argv[3])
-port  = int(sys.argv[5])
-addr = pycoxnet.inet_pton(pycoxnet.AF_INET, sys.argv[2])
-gw_addr = pycoxnet.inet_pton(pycoxnet.AF_INET, "10.0.0.254")
 ifindex = stack.if_nametoindex("vde0")
 
 stack.linksetupdown(ifindex, 1)
-stack.ipaddr_add(pycoxnet.AF_INET, addr, prefix, ifindex)
-stack.iproute_add(pycoxnet.AF_INET, None, 0, gw_addr)
+stack.ipaddr_add(pycoxnet.AF_INET, "10.0.0.2", 24, ifindex)
+stack.iproute_add(pycoxnet.AF_INET, "10.0.0.254")
 
 sock = stack.socket(pycoxnet.AF_INET, pycoxnet.SOCK_STREAM)
 
-sock.connect((sys.argv[4], port))
+sock.connect(("10.0.0.1", 5000))
 
-print("Connected to server at", (sys.argv[4], port))
+print("Connected to server at", sock.getpeername())
 
 poll_obj = select.poll()
 poll_obj.register(sock, select.POLLIN);
