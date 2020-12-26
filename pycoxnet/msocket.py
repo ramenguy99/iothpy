@@ -1,29 +1,46 @@
-from ._pycoxnet import socket_base
+"""
+MSocket class
 
-from socket import AF_INET, AF_INET6, SOCK_STREAM, SOCK_DGRAM, _intenum_converter, AddressFamily, SocketKind, SocketIO
+This module defines the MSocket class for internal use.
+see help("pycoxnet.msocket.MSocket") for more information.
+"""
 
+#Import pycoxnet c module
+import pycoxnet._pycoxnet as _pycoxnet
+
+#Import stack for the Stack class
+import pycoxnet.stack
+
+#Import socket, io and os to implement some of the socket methods
+import socket
 import io
 import os
 
-# Python socket implementation
-class socket_py(socket_base):
-    """A subclass of _socket.socket adding the makefile() method."""
+class MSocket(_pycoxnet.MSocketBase):
+    """ Subclass of MSocketBase to add higher level functionality
+
+    This class has the same interface as the built-in socket.socket class
+    with the only difference being one additional required argument in the
+    constructor. The first argument must be a "Stack" object.
+
+    This class is only used internally, the user should instantiate a MSocket
+    using the method Stack.socket().
+    """
 
     __slots__ = ["__weakref__", "_io_refs", "_closed"]
 
     def __init__(self, stack, family=-1, type=-1, proto=-1, fileno=None):
-        # For user code address family and type values are IntEnum members, but
-        # for the underlying _socket.socket they're just integers. The
-        # constructor of _socket.socket converts the given argument to an
-        # integer automatically.
+        if not isinstance(stack, pycoxnet.stack.Stack):
+            raise TypeError("stack must be of type Stack")
+
         if fileno is None:
             if family == -1:
-                family = AF_INET
+                family = socket.AF_INET
             if type == -1:
-                type = SOCK_STREAM
+                type = socket.SOCK_STREAM
             if proto == -1:
                 proto = 0
-        socket_base.__init__(self, stack, family, type, proto, fileno)
+        _pycoxnet.MSocketBase.__init__(self, stack, family, type, proto, fileno)
         self._io_refs = 0
         self._closed = False
 
@@ -71,8 +88,8 @@ class socket_py(socket_base):
         Duplicate the socket. Return a new socket object connected to the same
         system resource. The new socket is non-inheritable.
         """
-        fd = dup(self.fileno())
-        sock = self.__class__(self.family, self.type, self.proto, fileno=fd)
+        fd = _pycoxnet.dup(self.fileno())
+        sock = MSocket(self.stack, self.family, self.type, self.proto, fileno=fd)
         sock.settimeout(self.gettimeout())
         return sock
 
@@ -83,14 +100,13 @@ class socket_py(socket_base):
         For IP sockets, the address info is a pair (hostaddr, port).
         """
         fd, addr = self._accept()
-        sock = socket_py(self.stack, self.family, self.type, self.proto, fileno=fd)
+        sock = MSocket(self.stack, self.family, self.type, self.proto, fileno=fd)
+        
         # Issue #7995: if no default timeout is set and the listening
         # socket had a (non-zero) timeout, force the new socket in blocking
         # mode to override platform-specific socket flags inheritance.
-
-        #TODO: add back whenwe have gettimeout 
-        #if getdefaulttimeout() is None and self.gettimeout():
-        #    sock.setblocking(True)
+        if _pycoxnet.getdefaulttimeout() is None and self.gettimeout():
+            sock.setblocking(True)
 
         return sock, addr
 
@@ -112,7 +128,7 @@ class socket_py(socket_base):
             rawmode += "r"
         if writing:
             rawmode += "w"
-        raw = SocketIO(self, rawmode)
+        raw = socket.SocketIO(self, rawmode)
         self._io_refs += 1
         if buffering is None:
             buffering = -1
@@ -283,7 +299,7 @@ class socket_py(socket_base):
         if self._closed:
             self.close()
 
-    def _real_close(self, _ss=socket_base):
+    def _real_close(self, _ss=_pycoxnet.MSocketBase):
         # This function should not reference any globals. See issue #808164.
         _ss.close(self)
 
@@ -306,13 +322,13 @@ class socket_py(socket_base):
     def family(self):
         """Read-only access to the address family for this socket.
         """
-        return _intenum_converter(super().family, AddressFamily)
+        return socket._intenum_converter(super().family, socket.AddressFamily)
 
     @property
     def type(self):
         """Read-only access to the socket type.
         """
-        return _intenum_converter(super().type, SocketKind)
+        return socket._intenum_converter(super().type, socket.SocketKind)
 
     if os.name == 'nt':
         def get_inheritable(self):

@@ -39,7 +39,9 @@ stack_finalize(stack_object* self)
 
     /* Delete the ioth network stack */
     if(self->stack) {
-        /*ioth_delstack(self->stack);*/
+        /* This is currently commented because freeing the stack causes a segfault when using picox */
+        /* ioth_delstack(self->stack); */
+        self->stack = NULL;
     }
 
     /* Restore the saved exception. */
@@ -126,14 +128,6 @@ stack_initobj(PyObject* self, PyObject* args, PyObject* kwds)
     return 0;
 }
 
-
-PyDoc_STRVAR(getstack_doc, "Test doc for getstack");
-
-static PyObject* 
-stack_getstack(stack_object* self)
-{
-    return PyLong_FromVoidPtr(self->stack);
-}
 
 PyDoc_STRVAR(if_nameindex_doc, "if_nameindex()\n\
 \n\
@@ -619,48 +613,13 @@ stack_iplink_del(stack_object *self, PyObject *args, PyObject *kwargs){
         return retvalue;
 }
 
-PyDoc_STRVAR(stack_socket_doc, "create a new socket for the network stack");
-
-static PyObject *
-stack_socket(stack_object* self, PyObject *args, PyObject *kwds)
-{
-    if(!self->stack) 
-    {
-        PyErr_SetString(PyExc_Exception, "Uninitialized stack");
-        return NULL;
-    }
-
-    // Parse keyword arguments the same way Python does it
-    static char *keywords[] = {"family", "type", "proto", 0};
-    int family = AF_INET;
-    int type = SOCK_STREAM;
-    int proto = 0;
-    if(!PyArg_ParseTupleAndKeywords(args, kwds, "|iii:socket", keywords, &family, &type, &proto))
-        return NULL;
-
-    // Prepare arguments for the socket constructor
-    PyObject* socket_args = Py_BuildValue("Oiii", (PyObject*)self, family, type, proto);
-    if(!socket_args) {
-        return NULL;
-    }
-
-    // Instantiate a socket by calling the constructor of the socket type
-    PyObject* socket = PyObject_CallObject((PyObject*)&socket_type, socket_args);
-
-    // Release arguments
-    Py_DECREF(socket_args);
-
-    return socket;
-}
-
-
 static PyMethodDef stack_methods[] = {
-    {"getstack", (PyCFunction)stack_getstack, METH_NOARGS, getstack_doc},
-    
+    /* Listing network interfaces */
     {"if_nameindex", (PyCFunction)stack_if_nameindex, METH_NOARGS, if_nameindex_doc},
     {"if_nametoindex", (PyCFunction)stack_if_nametoindex, METH_VARARGS, if_nametoindex_doc},
     {"if_indextoname", (PyCFunction)stack_if_indextoname, METH_O, if_indextoname_doc},
 
+    /* Network interface configuration */
     {"linksetupdown", (PyCFunction)stack_linksetupdown, METH_VARARGS, linksetupdown_doc},
     {"ipaddr_add", (PyCFunction)stack_ipaddr_add, METH_VARARGS, ipaddr_add_doc},
     {"ipaddr_del", (PyCFunction)stack_ipaddr_del, METH_VARARGS, ipaddr_del_doc},
@@ -668,24 +627,19 @@ static PyMethodDef stack_methods[] = {
     {"iplink_del", (PyCFunction)stack_iplink_del, METH_VARARGS | METH_KEYWORDS, iplink_del_doc},
     {"iproute_add", (PyCFunction)stack_iproute_add, METH_VARARGS, iproute_add_doc},
     {"iproute_del", (PyCFunction)stack_iproute_del, METH_VARARGS, iproute_del_doc},
-//    {"socket", (PyCFunction)stack_socket, METH_VARARGS | METH_KEYWORDS, stack_socket_doc},
-
 
     {NULL, NULL} /* sentinel */
 };
 
 PyDoc_STRVAR(stack_doc,
-"stack(vdeurl=None) -> stack object\n\
+"StackBase(stack, vdeurl)\n\
 \n\
-Create a stack with no interfaces or with one interface named vde0 and connected to vdeurl if specified\n\
-\n\
-Methods of stack objects:\n\
-getstack() -- return the pointer to the network stack\n\
+This class is used internally as a base type for the Stack class\n\
 ");
 
 PyTypeObject stack_type = {
   PyVarObject_HEAD_INIT(0, 0)                 /* Must fill in type value later */
-    "_pycoxnet.stack_base",                             /* tp_name */
+    "_pycoxnet.StackBase",                             /* tp_name */
     sizeof(stack_object),                       /* tp_basicsize */
     0,                                          /* tp_itemsize */
     (destructor)stack_dealloc,                  /* tp_dealloc */
@@ -712,7 +666,6 @@ PyTypeObject stack_type = {
     0,                                          /* tp_iter */
     0,                                          /* tp_iternext */
     stack_methods,                              /* tp_methods */
-
     0,                                          /* tp_members */
     0,                                          /* tp_getset */
     0,                                          /* tp_base */

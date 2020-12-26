@@ -2,7 +2,7 @@
 
 import pycoxnet
 
-stack = pycoxnet.stack("vdestack", "null://")
+stack = pycoxnet.Stack("vdestack", "null://")
 if_index = stack.if_nametoindex("vde0")
 
 addr = pycoxnet.inet_pton(pycoxnet.AF_INET, "10.0.0.1")
@@ -14,7 +14,7 @@ stack.iproute_add(pycoxnet.AF_INET, None, 0, gw_addr)
 
 
 print(pycoxnet.getdefaulttimeout())
-pycoxnet.setdefaulttimeout(5)
+pycoxnet.setdefaulttimeout(2)
 print(pycoxnet.getdefaulttimeout())
 
 s = stack.socket(pycoxnet.AF_INET, pycoxnet.SOCK_STREAM);
@@ -38,7 +38,7 @@ print(s.gettimeout())
 try:
     conn, addr = s.accept()
 except OSError as e:
-    print("Accept would block: ", e);
+    print("Accept would block: ", e)
 
 
 # print("repr " + repr(s))

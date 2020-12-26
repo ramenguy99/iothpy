@@ -2362,8 +2362,6 @@ socket_initobj(PyObject* self, PyObject* args, PyObject* kwds)
             PyErr_SetString(PyExc_ValueError, "invalid file descriptor");
             return -1;
         }
-
-        fd = fd;
     }
     
     if (init_sockobject(s, stack, fd, family, type, proto) == -1) {
@@ -2384,6 +2382,7 @@ socket_new(PyTypeObject *type, PyObject *args, PyObject *kwds)
         socket_object* s = (socket_object*)new;
         s->fd = -1;
         s->sock_timeout = _PyTime_FromSeconds(-1);
+        s->stack = NULL;
     }
     
     return new;
@@ -2396,7 +2395,7 @@ socket_finalize(socket_object* s)
     /* Save the current exception, if any. */
     PyErr_Fetch(&error_type, &error_value, &error_traceback);
 
-    Py_DECREF(s->stack);
+    Py_XDECREF(s->stack);
     if (s->fd != -1) {
         ioth_close(s->fd);
         s->fd = -1;
@@ -2406,7 +2405,6 @@ socket_finalize(socket_object* s)
     PyErr_Restore(error_type, error_value, error_traceback);
 }
 
-PyDoc_STRVAR(socket_doc, "Test documentation for socket type");
  
 /* sock_object members */
 static PyMemberDef socket_memberlist[] = {
@@ -2418,9 +2416,11 @@ static PyMemberDef socket_memberlist[] = {
 };
 
 
+PyDoc_STRVAR(socket_doc, "Test documentation for MSocketBase type");
+
 PyTypeObject socket_type = {
-    PyVarObject_HEAD_INIT(0, 0)         /* Must fill in type value later */
-    "_pycoxnet.socket_base",                         /* tp_name */
+    PyVarObject_HEAD_INIT(0, 0)    /* Must fill in type value later */
+    "_pycoxnet.MSocketBase",                    /* tp_name */
     sizeof(socket_object),                      /* tp_basicsize */
     0,                                          /* tp_itemsize */
     (destructor)socket_dealloc,                 /* tp_dealloc */
@@ -2448,7 +2448,7 @@ PyTypeObject socket_type = {
     0,                                          /* tp_iternext */
     socket_methods,                             /* tp_methods */
     socket_memberlist,                          /* tp_members */
-    0,                          /* tp_getset */
+    0,                                          /* tp_getset */
     0,                                          /* tp_base */
     0,                                          /* tp_dict */
     0,                                          /* tp_descr_get */

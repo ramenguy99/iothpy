@@ -2,7 +2,7 @@
 
 import pycoxnet
 
-stack = pycoxnet.stack("vdestack", "vxvde://234.0.0.1")
+stack = pycoxnet.Stack("picox", "vxvde://234.0.0.1")
 if_index = stack.if_nametoindex("vde0")
 addr = pycoxnet.inet_pton(pycoxnet.AF_INET, "10.0.0.1")
 gw_addr = pycoxnet.inet_pton(pycoxnet.AF_INET, "10.0.0.254")

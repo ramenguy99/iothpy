@@ -10,7 +10,7 @@ if(len(sys.argv) != 5):
     print("Usage: {0} vdeurl ip prefix port\ne,g: {1} vxvde://234.0.0.1 10.0.0.1 24 5000\n\n".format(name, name))
     exit(1)
 
-stack  = pycoxnet.stack("picox", sys.argv[1])
+stack  = pycoxnet.Stack("picox", sys.argv[1])
 
 prefix = int(sys.argv[3])
 port  = int(sys.argv[4])

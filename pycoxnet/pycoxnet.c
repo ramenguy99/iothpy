@@ -22,6 +22,15 @@
 
 #include <libioth.h>
 
+PyDoc_STRVAR(pycoxnet_doc,
+"_pycoxnet c module\n\
+\n\
+This module defines the base classes MSocketBase and StackBase\n\
+used to interface with the ioth c api. \n\
+It also defines the functions needed to offer the same interface as\n\
+the built-in socket module\n\
+");
+
 
 #ifdef CMSG_LEN
 
@@ -144,7 +153,7 @@ static PyMethodDef pycox_methods[] = {
 static struct PyModuleDef pycox_module = {
     PyModuleDef_HEAD_INIT,
     "_pycoxnet",   /* name of module */
-    NULL,          /* module documentation, may be NULL */
+    pycoxnet_doc,          /* module documentation, may be NULL */
     -1,            /* size of per-interpreter state of the module,
                       or -1 if the module keeps state in global variables. */
     pycox_methods
@@ -167,22 +176,15 @@ PyInit__pycoxnet(void)
 
     /* Add a symbol for the stack type */
     Py_INCREF((PyObject *)&stack_type);
-    if(PyModule_AddObject(module, "stack_base", (PyObject*)&stack_type) != 0) {
+    if(PyModule_AddObject(module, "StackBase", (PyObject*)&stack_type) != 0) {
         return NULL;
     }
 
     /* Add a symbol for the socket type */
     Py_INCREF((PyObject *)&socket_type);
-    if (PyModule_AddObject(module, "SocketType",
+    if (PyModule_AddObject(module, "MSocketBase",
                            (PyObject *)&socket_type) != 0)
         return NULL;
 
-    /* Add a symbol for the socket type */
-    Py_INCREF((PyObject *)&socket_type);
-    if (PyModule_AddObject(module, "socket_base",
-                           (PyObject *)&socket_type) != 0)
-        return NULL;
-
- 
     return module;
 }
