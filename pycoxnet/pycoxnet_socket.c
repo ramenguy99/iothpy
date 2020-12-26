@@ -21,6 +21,10 @@
 
 _PyTime_t defaulttimeout = _PYTIME_FROMSECONDS(-1);
 
+/* 
+   Parse a timeout object into a _PyTime_t, raise an exception and return -1 if
+   not a valid timeout object
+*/
 int socket_parse_timeout(_PyTime_t *timeout, PyObject *timeout_obj)
 {
 
@@ -215,6 +219,11 @@ get_sockaddr_from_tuple(char* func_name, socket_object* s, PyObject* args, struc
     return 1;
 }
 
+
+/* 
+    Return the length of an IPv4 or IPv6 address based on the socket family, 
+    raise an exception if the socket family is not valid
+*/
 static int
 getsockaddrlen(socket_object *s, socklen_t *len_ret)
 {
@@ -244,6 +253,7 @@ getsockaddrlen(socket_object *s, socklen_t *len_ret)
 
 PyObject *socket_timeout;
 
+/* Poll on a socket object */
 static int
 internal_select(socket_object *s, int writing, _PyTime_t interval, int connect)
 {
@@ -300,6 +310,7 @@ internal_select(socket_object *s, int writing, _PyTime_t interval, int connect)
 }
 
 
+/* Utility function to call blocking methods on a socket */
 static int
 sock_call(socket_object *s,
              int writing,
@@ -451,6 +462,13 @@ sock_bind(PyObject *self, PyObject *args)
     Py_RETURN_NONE;
 }
 
+PyDoc_STRVAR(bind_doc,
+"bind(address)\n\
+\n\
+Bind the socket to a local address.  For IP sockets, the address is a\n\
+pair (host, port); the host must refer to the local host. For raw packet\n\
+sockets the address is a tuple (ifname, proto [,pkttype [,hatype [,addr]]])");
+
 static PyObject *
 sock_listen(PyObject *self, PyObject *args)
 {
@@ -478,6 +496,14 @@ sock_listen(PyObject *self, PyObject *args)
 
     Py_RETURN_NONE;
 }
+
+PyDoc_STRVAR(listen_doc,
+"listen([backlog])\n\
+\n\
+Enable a server to accept connections.  If backlog is specified, it must be\n\
+at least 0 (if it is lower, it is set to 0); it specifies the number of\n\
+unaccepted connections that the system will allow before refusing new\n\
+connections. If not specified, a default reasonable value is chosen.");
 
 static PyObject* 
 new_socket_from_fd(stack_object* stack, int family, int type, int proto, int fd)
@@ -558,6 +584,14 @@ sock_accept(PyObject* self, PyObject* unused_args)
     return res;
 }
 
+PyDoc_STRVAR(accept_doc,
+"_accept() -> (integer, address info)\n\
+\n\
+Wait for an incoming connection.  Return a new socket file descriptor\n\
+representing the connection, and the address of the client.\n\
+For IP sockets, the address info is a pair (hostaddr, port).");
+
+
 struct sock_recv {
     char *cbuf;
     Py_ssize_t len;
@@ -636,6 +670,16 @@ sock_recv(PyObject *self, PyObject *args)
     return buf;
 }
 
+PyDoc_STRVAR(recv_doc,
+"recv(buffersize[, flags]) -> data\n\
+\n\
+Receive up to buffersize bytes from the socket.  For the optional flags\n\
+argument, see the Unix manual.  When no data is available, block until\n\
+at least one byte is available or until the remote end is closed.  When\n\
+the remote end is closed and all data is read, return the empty string.");
+
+
+
 static PyObject*
 sock_recv_into(PyObject* self, PyObject *args, PyObject *kwds)
 {
@@ -685,6 +729,16 @@ sock_recv_into(PyObject* self, PyObject *args, PyObject *kwds)
        special here in the case that readlen < recvlen. */
     return PyLong_FromSsize_t(readlen);
 }
+
+PyDoc_STRVAR(recv_into_doc,
+"recv_into(buffer, [nbytes[, flags]]) -> nbytes_read\n\
+\n\
+A version of recv() that stores its data into a buffer rather than creating\n\
+a new string.  Receive up to buffersize bytes from the socket.  If buffersize\n\
+is not specified (or 0), receive up to the size available in the given buffer.\n\
+\n\
+See recv() for documentation about the flags.");
+
 
 
 struct sock_recvfrom_ctx {
@@ -1294,6 +1348,14 @@ sock_send(PyObject *self, PyObject *args)
     return PyLong_FromSsize_t(ctx.result);
 }
 
+PyDoc_STRVAR(send_doc,
+"send(data[, flags]) -> count\n\
+\n\
+Send a data string to the socket.  For the optional flags\n\
+argument, see the Unix manual.  Return the number of bytes\n\
+sent; this may be less than len(data) if the network is busy.");
+
+
 
 static PyObject *
 sock_sendall(PyObject *self, PyObject *args)
@@ -1360,6 +1422,13 @@ done:
     return res;
 }
 
+PyDoc_STRVAR(sendall_doc,
+"sendall(data[, flags])\n\
+\n\
+Send a data string to the socket.  For the optional flags\n\
+argument, see the Unix manual.  This calls send() repeatedly\n\
+until all data is sent.  If an error occurs, it's impossible\n\
+to tell how much data has been sent.");
 
 
 #ifdef CMSG_LEN
@@ -1752,7 +1821,12 @@ sock_close(PyObject *self, PyObject *args)
     socket_object* s = (socket_object*)self;
     if(s->fd != -1)
     {
-        int res = ioth_close(s->fd);
+        int res;
+
+        Py_BEGIN_ALLOW_THREADS
+        res = ioth_close(s->fd);
+        Py_END_ALLOW_THREADS
+
         s->fd = -1;
         if(res < 0 && errno != ECONNRESET) {
             PyErr_SetFromErrno(PyExc_OSError);
@@ -1763,6 +1837,13 @@ sock_close(PyObject *self, PyObject *args)
     //Return none if no errors
     Py_RETURN_NONE;
 }
+
+PyDoc_STRVAR(close_doc,
+"close()\n\
+\n\
+Close the socket.  It cannot be used after this call.");
+
+
 
 static int
 sock_connect_impl(socket_object* s, void* Py_UNUSED(data))
@@ -1860,6 +1941,13 @@ sock_connect(PyObject *self, PyObject *args)
     Py_RETURN_NONE;
 }
 
+PyDoc_STRVAR(connect_doc,
+"connect(address)\n\
+\n\
+Connect the socket to a remote address.  For IP sockets, the address\n\
+is a pair (host, port).");
+
+
 static PyObject *
 sock_connect_ex(PyObject *self, PyObject *args)
 {
@@ -1879,12 +1967,26 @@ sock_connect_ex(PyObject *self, PyObject *args)
     Py_RETURN_NONE;
 }
 
+PyDoc_STRVAR(connect_ex_doc,
+"connect_ex(address) -> errno\n\
+\n\
+This is like connect(address), but returns an error code (the errno value)\n\
+instead of raising an exception when an error occurs.");
+
+
+
 static PyObject *
 sock_fileno(PyObject *self, PyObject *args)
 {
     socket_object* s = (socket_object*)self;
     return PyLong_FromLong(s->fd);
 }
+
+PyDoc_STRVAR(fileno_doc,
+"fileno() -> integer\n\
+\n\
+Return the integer file descriptor of the socket.");
+
 
 
 static PyObject *
@@ -1933,6 +2035,15 @@ sock_getsockopt(PyObject *self, PyObject *args)
     return buf;
 }
 
+PyDoc_STRVAR(getsockopt_doc,
+"getsockopt(level, option[, buffersize]) -> value\n\
+\n\
+Get a socket option.  See the Unix manual for level and option.\n\
+If a nonzero buffersize argument is given, the return value is a\n\
+string of that length; otherwise it is an integer.");
+
+
+
 static PyObject *
 sock_setsockopt(PyObject* self, PyObject *args)
 {
@@ -1979,6 +2090,17 @@ done:
     Py_RETURN_NONE;
 }
 
+PyDoc_STRVAR(setsockopt_doc,
+"setsockopt(level, option, value: int)\n\
+setsockopt(level, option, value: buffer)\n\
+setsockopt(level, option, None, optlen: int)\n\
+\n\
+Set a socket option.  See the Unix manual for level and option.\n\
+The value argument can either be an integer, a string buffer, or\n\
+None, optlen.");
+
+
+
 static PyObject *
 sock_detach(PyObject* self, PyObject *Py_UNUSED(ignored))
 {
@@ -2018,6 +2140,13 @@ sock_shutdown(PyObject *self, PyObject *arg)
     Py_RETURN_NONE;
 }
 
+PyDoc_STRVAR(shutdown_doc,
+"shutdown(flag)\n\
+\n\
+Shut down the reading side of the socket (flag == SHUT_RD), the writing side\n\
+of the socket (flag == SHUT_WR), or both ends (flag == SHUT_RDWR).");
+
+
 static PyObject*
 sock_getsockname(PyObject* self, PyObject* args)
 {
@@ -2039,6 +2168,14 @@ sock_getsockname(PyObject* self, PyObject* args)
     return make_sockaddr((struct sockaddr*)&addrbuf, addrlen);
 }
 
+PyDoc_STRVAR(getsockname_doc,
+"getsockname() -> address info\n\
+\n\
+Return the address of the local endpoint.  For IP sockets, the address\n\
+info is a pair (hostaddr, port).");
+
+
+
 static PyObject*
 sock_getpeername(PyObject* self, PyObject* args)
 {
@@ -2059,6 +2196,13 @@ sock_getpeername(PyObject* self, PyObject* args)
 
     return make_sockaddr((struct sockaddr*)&addrbuf, addrlen);
 }
+
+PyDoc_STRVAR(getpeername_doc,
+"getpeername() -> address info\n\
+\n\
+Return the address of the remote endpoint.  For IP sockets, the address\n\
+info is a pair (hostaddr, port).");
+
 
 
 /* Function to perform the setting of socket blocking mode
@@ -2225,18 +2369,18 @@ operations are disabled.");
 
 static PyMethodDef socket_methods[] = 
 {
-    {"bind",    sock_bind,    METH_O,       "bind addr"},
-    {"close",   sock_close,   METH_NOARGS,  "close socket identified by fd"},
-    {"connect", sock_connect, METH_O,       "connect socket identified by fd sin_addr"},
-    {"connect_ex", sock_connect_ex, METH_O,    "connect_ex socket identified by fd sin_addr"},
-    {"listen",  sock_listen,  METH_VARARGS, "start listen on socket identified by fd"},
-    {"_accept",  sock_accept,  METH_NOARGS,  "accept connection on socket identified by fd"},
-    {"recv",    sock_recv,    METH_VARARGS, "recv size bytes as string from socket indentified by fd"},
-    {"recv_into", (PyCFunction)sock_recv_into, METH_VARARGS | METH_KEYWORDS, "recv into size bytes as string from socket indentified by fd"},
+    {"bind",    sock_bind,    METH_O,       bind_doc},
+    {"close",   sock_close,   METH_NOARGS,  close_doc},
+    {"connect", sock_connect, METH_O,       connect_doc},
+    {"connect_ex", sock_connect_ex, METH_O, connect_ex_doc},
+    {"listen",  sock_listen,  METH_VARARGS, listen_doc},
+    {"_accept",  sock_accept,  METH_NOARGS, accept_doc},
+    {"recv",    sock_recv,    METH_VARARGS, recv_doc},
+    {"recv_into", (PyCFunction)sock_recv_into, METH_VARARGS | METH_KEYWORDS, recv_into_doc},
     {"recvfrom", sock_recvfrom, METH_VARARGS, recvfrom_doc},
     {"recvfrom_into", (PyCFunction)sock_recvfrom_into, METH_VARARGS | METH_KEYWORDS, recvfrom_into_doc},
-    {"send",    sock_send,    METH_VARARGS, "send string to socket indentified by fd"},  
-    {"sendall",    sock_sendall,    METH_VARARGS, "send all string to socket indentified by fd"},  
+    {"send",    sock_send,    METH_VARARGS, send_doc},  
+    {"sendall",    sock_sendall,    METH_VARARGS, sendall_doc},  
     {"sendto", sock_sendto, METH_VARARGS, sendto_doc},
 
 #ifdef CMSG_LEN
@@ -2246,12 +2390,12 @@ static PyMethodDef socket_methods[] =
 #endif
 
     {"detach",  sock_detach, METH_NOARGS, detach_doc},
-    {"fileno",  sock_fileno,    METH_NOARGS, "returns the socket fd"}, 
-    {"getsockopt", sock_getsockopt, METH_VARARGS, "get socket option"},
-    {"setsockopt", sock_setsockopt, METH_VARARGS, "set socket option"},
-    {"shutdown", sock_shutdown, METH_O, "shutdown the socket"},
-    {"getsockname", sock_getsockname, METH_NOARGS, "get socket name"},
-    {"getpeername", sock_getpeername, METH_NOARGS, "get peer name"},
+    {"fileno",  sock_fileno,    METH_NOARGS, fileno_doc}, 
+    {"getsockopt", sock_getsockopt, METH_VARARGS, getsockopt_doc},
+    {"setsockopt", sock_setsockopt, METH_VARARGS, setsockopt_doc},
+    {"shutdown", sock_shutdown, METH_O, shutdown_doc},
+    {"getsockname", sock_getsockname, METH_NOARGS, getsockname_doc},
+    {"getpeername", sock_getpeername, METH_NOARGS, getpeername_doc},
     {"setblocking", sock_setblocking, METH_O, setblocking_doc},
     {"getblocking", sock_getblocking, METH_NOARGS, getblocking_doc},
     {"settimeout",  sock_settimeout, METH_O, settimeout_doc},
