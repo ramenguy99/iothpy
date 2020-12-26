@@ -37,7 +37,7 @@ print(s.gettimeout())
 
 try:
     conn, addr = s.accept()
-except OSError as e:
+except pycoxnet.timeout as e:
     print("Accept would block: ", e)
 
 

@@ -2,12 +2,8 @@ Da chiedere:
 _Nome ufficiale?
 
 Da fare:
-_doc socket methods (dario fino a send, lorenzo da send in po) 
 _linkgetadd linksetadd, (lorenzo)
 _iproute add e del (dario)
-
-_dup e altri metodi globali del modulo
-_import socket.timeout, e review degli import in __init__ per avere tutte le funzionalita' del modulo socket
 
 DOC:
 _TODO doc in __init__.py e stack.py

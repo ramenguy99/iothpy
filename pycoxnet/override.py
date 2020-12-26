@@ -38,3 +38,8 @@ def override_socket_module(stack):
     socket_module.__dict__["getdefaulttimeout"] = _pycoxnet.getdefaulttimeout
     socket_module.__dict__["setdefaulttimeout"] = _pycoxnet.setdefaulttimeout
 
+    # Override close
+    socket_module.__dict__["close"] = _pycoxnet.close
+
+    # Override timeout exception
+    socket_module.__dict__["timeout"] = _pycoxnet.timeout

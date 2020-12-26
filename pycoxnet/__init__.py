@@ -13,7 +13,7 @@ TODO: Full description with examples here
 from pycoxnet.stack import Stack
 
 # Import functions from the c module
-from pycoxnet._pycoxnet import getdefaulttimeout, setdefaulttimeout, CMSG_LEN, CMSG_SPACE
+from pycoxnet._pycoxnet import getdefaulttimeout, setdefaulttimeout, CMSG_LEN, CMSG_SPACE, close, timeout
 
 # Import the function to override the built-in socket module
 from pycoxnet.override import override_socket_module
@@ -24,6 +24,13 @@ from socket import (
     inet_aton, inet_ntoa, inet_ntop, inet_pton, ntohl, ntohs, htonl, htons,
 
     # Constants
-    AF_INET, AF_INET6, SOCK_STREAM, SOCK_DGRAM, INADDR_ANY
+    AF_INET, AF_INET6, SOCK_STREAM, SOCK_DGRAM, INADDR_ANY,
+
+    # Get host functions
+    gethostbyname, gethostbyname_ex, gethostbyaddr, gethostname,
+
+    # Other functions
+    getfqdn, getaddrinfo, getnameinfo, getprotobyname, getservbyname, getservbyport,
+    sethostname,
 )
 

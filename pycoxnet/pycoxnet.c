@@ -137,6 +137,36 @@ A value of None indicates that new socket objects have no timeout.\n\
 When the socket module is first imported, the default is None.");
 
 
+static PyObject *
+socket_close(PyObject *self, PyObject *fdobj)
+{
+    int fd;
+    int res;
+
+    fd = PyLong_AsLong(fdobj);
+    if (fd == -1 && PyErr_Occurred())
+        return NULL;
+    
+    Py_BEGIN_ALLOW_THREADS
+    res = ioth_close(fd);
+    Py_END_ALLOW_THREADS
+
+    /* bpo-30319: The peer can already have closed the connection.
+       Python ignores ECONNRESET on close(). */
+    if (res < 0 && errno != ECONNRESET) {
+        PyErr_SetFromErrno(PyExc_OSError);
+        return NULL;
+    }
+
+    Py_RETURN_NONE;
+}
+
+PyDoc_STRVAR(close_doc,
+"close(integer) -> None\n\
+\n\
+Close an integer socket file descriptor.  This is like os.close(), but for\n\
+sockets; on some platforms os.close() won't work for socket file descriptors.");
+
 static PyMethodDef pycox_methods[] = {
 #ifdef CMSG_LEN
     {"CMSG_LEN",   socket_CMSG_LEN, METH_VARARGS, CMSG_LEN_doc},
@@ -144,16 +174,18 @@ static PyMethodDef pycox_methods[] = {
     {"CMSG_SPACE", socket_CMSG_SPACE, METH_VARARGS, CMSG_SPACE_doc},
 #endif
 #endif
-
     {"getdefaulttimeout",  socket_getdefaulttimeout, METH_NOARGS, getdefaulttimeout_doc},
     {"setdefaulttimeout",  socket_setdefaulttimeout, METH_O, setdefaulttimeout_doc},    
+
+    {"close",              socket_close, METH_O, close_doc},
+
     {NULL, NULL, 0, NULL}        /* Sentinel */
 };
 
 static struct PyModuleDef pycox_module = {
     PyModuleDef_HEAD_INIT,
     "_pycoxnet",   /* name of module */
-    pycoxnet_doc,          /* module documentation, may be NULL */
+    pycoxnet_doc,  /* module documentation, may be NULL */
     -1,            /* size of per-interpreter state of the module,
                       or -1 if the module keeps state in global variables. */
     pycox_methods
@@ -167,7 +199,7 @@ PyInit__pycoxnet(void)
 
     PyObject* module = PyModule_Create(&pycox_module);
 
-    socket_timeout = PyErr_NewException("socket.timeout",
+    socket_timeout = PyErr_NewException("_pycoxnet.timeout",
                                         PyExc_OSError, NULL);
     if (socket_timeout == NULL)
         return NULL;
