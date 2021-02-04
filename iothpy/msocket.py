@@ -1,9 +1,14 @@
+# Part of the contents of this file comes from the cpython codebase 
+# and its use is limited by the PYTHON SOFTWARE FOUNDATION LICENSE.
+# For more information see https://github.com/python/cpython/blob/master/LICENSE
+
 """
 MSocket class
 
 This module defines the MSocket class for internal use.
 see help("iothpy.msocket.MSocket") for more information.
 """
+
 
 #Import iothpy c module
 import iothpy._iothpy as _iothpy

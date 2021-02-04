@@ -7,6 +7,7 @@ iothpy is a library for developing Internet of Threads applications using python
 To get started with iothpy you need to have libioth installed and download iotphy with pip as follows:
 
 ```bash
+pip install scikit-build
 pip install iothpy
 ```
 

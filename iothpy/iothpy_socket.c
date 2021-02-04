@@ -1,3 +1,10 @@
+/*
+    Part of the contents of this file comes from the cpython codebase 
+    and its use is limited by the PYTHON SOFTWARE FOUNDATION LICENSE.
+    For more information see https://github.com/python/cpython/blob/master/LICENSE
+*/
+
+
 #include "iothpy_stack.h"
 #include "iothpy_socket.h"
 
