@@ -1,16 +1,16 @@
 #!/usr/bin/python3
 
-import pycoxnet
+import iothpy
 
-stack = pycoxnet.stack("vdestack", "null://")
+stack = iothpy.Stack("vdestack", "null://")
 if_index = stack.if_nametoindex("vde0")
 
 stack.linksetupdown(if_index, 1)
-stack.ipaddr_add(pycoxnet.af_inet, "10.0.0.1", 24, if_index)
-stack.iproute_add(pycoxnet.af_inet, "10.0.0.254")
+stack.ipaddr_add(iothpy.AF_INET, "10.0.0.1", 24, if_index)
+stack.iproute_add(iothpy.AF_INET, "10.0.0.254")
 stack.linksetaddr(if_index, "80:00:42:0e:e7:3a")
 
-s = stack.socket(pycoxnet.AF_INET, pycoxnet.SOCK_STREAM);
+s = stack.socket(iothpy.AF_INET, iothpy.SOCK_STREAM);
 
 addr = stack.linkgetaddr(if_index)
 print(addr.hex(), len(addr))
@@ -22,11 +22,11 @@ print(len(newaddr))
 addr = stack.linkgetaddr(if_index)
 print(addr.hex(), len(addr))
 
-# print(pycoxnet.getdefaulttimeout())
-# pycoxnet.setdefaulttimeout(2)
-# print(pycoxnet.getdefaulttimeout())
+# print(iothpy.getdefaulttimeout())
+# iothpy.setdefaulttimeout(2)
+# print(iothpy.getdefaulttimeout())
 
-# s = stack.socket(pycoxnet.AF_INET, pycoxnet.SOCK_STREAM);
+# s = stack.socket(iothpy.AF_INET, iothpy.SOCK_STREAM);
 # print("Socket is blocking when created: ", s.getblocking());
 # s.setblocking(False);
 # print("Socket is blocking after setting to non blocking: ", s.getblocking());
@@ -46,7 +46,7 @@ print(addr.hex(), len(addr))
 
 # try:
 #     conn, addr = s.accept()
-# except pycoxnet.timeout as e:
+# except iothpy.timeout as e:
 #     print("Accept would block: ", e)
 
 
@@ -62,15 +62,15 @@ print(addr.hex(), len(addr))
 #     print(str(e))
 # 
 # 
-# print(pycoxnet.AF_INET);
-# print(hex(pycoxnet.htonl(0xFF)))
+# print(iothpy.AF_INET);
+# print(hex(iothpy.htonl(0xFF)))
 # 
-# addr = pycoxnet.inet_pton(pycoxnet.AF_INET, "10.0.0.42")
+# addr = iothpy.inet_pton(iothpy.AF_INET, "10.0.0.42")
 # print(addr)
-# s.ipaddr_add(pycoxnet.AF_INET, addr, 24, if_index)
+# s.ipaddr_add(iothpy.AF_INET, addr, 24, if_index)
 # 
-# addr = pycoxnet.inet_pton(pycoxnet.AF_INET6, "::42");
+# addr = iothpy.inet_pton(iothpy.AF_INET6, "::42");
 # print(addr)
-# s.ipaddr_add(pycoxnet.AF_INET6, addr, 64, if_index)
+# s.ipaddr_add(iothpy.AF_INET6, addr, 64, if_index)
 
 

@@ -1,9 +1,10 @@
 .eggs/
 _skbuild/
 dist/
-pycoxnet.egg-info/
+iothpy.egg-info/
 __pycache__/
 MANIFEST
 notes.txt
 **/.vs
 **/.vscode
+examples/example.py

@@ -1,5 +1,5 @@
-#include "pycoxnet_stack.h"
-#include "pycoxnet_socket.h"
+#include "iothpy_stack.h"
+#include "iothpy_socket.h"
 
 //PyMemberDef
 #include <structmember.h>
@@ -2564,7 +2564,7 @@ PyDoc_STRVAR(socket_doc, "Test documentation for MSocketBase type");
 
 PyTypeObject socket_type = {
     PyVarObject_HEAD_INIT(0, 0)    /* Must fill in type value later */
-    "_pycoxnet.MSocketBase",                    /* tp_name */
+    "_iothpy.MSocketBase",                    /* tp_name */
     sizeof(socket_object),                      /* tp_basicsize */
     0,                                          /* tp_itemsize */
     (destructor)socket_dealloc,                 /* tp_dealloc */

@@ -2,21 +2,21 @@
 MSocket class
 
 This module defines the MSocket class for internal use.
-see help("pycoxnet.msocket.MSocket") for more information.
+see help("iothpy.msocket.MSocket") for more information.
 """
 
-#Import pycoxnet c module
-import pycoxnet._pycoxnet as _pycoxnet
+#Import iothpy c module
+import iothpy._iothpy as _iothpy
 
 #Import stack for the Stack class
-import pycoxnet.stack
+import iothpy.stack
 
 #Import socket, io and os to implement some of the socket methods
 import socket
 import io
 import os
 
-class MSocket(_pycoxnet.MSocketBase):
+class MSocket(_iothpy.MSocketBase):
     """ Subclass of MSocketBase to add higher level functionality
 
     This class has the same interface as the built-in socket.socket class
@@ -30,7 +30,7 @@ class MSocket(_pycoxnet.MSocketBase):
     __slots__ = ["__weakref__", "_io_refs", "_closed"]
 
     def __init__(self, stack, family=-1, type=-1, proto=-1, fileno=None):
-        if not isinstance(stack, pycoxnet.stack.Stack):
+        if not isinstance(stack, iothpy.stack.Stack):
             raise TypeError("stack must be of type Stack")
 
         if fileno is None:
@@ -40,7 +40,7 @@ class MSocket(_pycoxnet.MSocketBase):
                 type = socket.SOCK_STREAM
             if proto == -1:
                 proto = 0
-        _pycoxnet.MSocketBase.__init__(self, stack, family, type, proto, fileno)
+        _iothpy.MSocketBase.__init__(self, stack, family, type, proto, fileno)
         self._io_refs = 0
         self._closed = False
 
@@ -88,7 +88,7 @@ class MSocket(_pycoxnet.MSocketBase):
         Duplicate the socket. Return a new socket object connected to the same
         system resource. The new socket is non-inheritable.
         """
-        fd = _pycoxnet.dup(self.fileno())
+        fd = _iothpy.dup(self.fileno())
         sock = MSocket(self.stack, self.family, self.type, self.proto, fileno=fd)
         sock.settimeout(self.gettimeout())
         return sock
@@ -105,7 +105,7 @@ class MSocket(_pycoxnet.MSocketBase):
         # Issue #7995: if no default timeout is set and the listening
         # socket had a (non-zero) timeout, force the new socket in blocking
         # mode to override platform-specific socket flags inheritance.
-        if _pycoxnet.getdefaulttimeout() is None and self.gettimeout():
+        if _iothpy.getdefaulttimeout() is None and self.gettimeout():
             sock.setblocking(True)
 
         return sock, addr
@@ -299,7 +299,7 @@ class MSocket(_pycoxnet.MSocketBase):
         if self._closed:
             self.close()
 
-    def _real_close(self, _ss=_pycoxnet.MSocketBase):
+    def _real_close(self, _ss=_iothpy.MSocketBase):
         # This function should not reference any globals. See issue #808164.
         _ss.close(self)
 

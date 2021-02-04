@@ -2,10 +2,8 @@ Da chiedere:
 _Nome ufficiale? iothpy pioth
 
 Da fare:
-_linkgetadd linksetadd linksetmtu
-_rinominare full
-_guardare doc
 _ricontrollare pacchetto e fare upload su pip
+_copyright
 
 Sito web:
 _Introduzione: libioth per python, download con pip , esempio creazione stack

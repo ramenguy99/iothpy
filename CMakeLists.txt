@@ -1,6 +1,6 @@
 cmake_minimum_required(VERSION 3.13)
 
-project(pycoxnet)
+project(iothpy)
 
 find_package(PythonExtensions REQUIRED)
 
@@ -26,10 +26,10 @@ foreach(HEADER IN LISTS HEADERS_REQUIRED)
 endforeach(HEADER)
 
 # Target for python extension module
-add_library(_pycoxnet MODULE pycoxnet/pycoxnet.c pycoxnet/pycoxnet_socket.c pycoxnet/pycoxnet_stack.c)
-target_link_libraries(_pycoxnet -lioth)
-python_extension_module(_pycoxnet)
+add_library(_iothpy MODULE iothpy/iothpy.c iothpy/iothpy_socket.c iothpy/iothpy_stack.c)
+target_link_libraries(_iothpy -lioth)
+python_extension_module(_iothpy)
 
-install(TARGETS _pycoxnet LIBRARY DESTINATION pycoxnet)
+install(TARGETS _iothpy LIBRARY DESTINATION iothpy)
 
 

@@ -1,7 +1,7 @@
 #!/usr/bin/python3
 
 import sys
-import pycoxnet
+import iothpy
 import time
 import select
 import random
@@ -15,11 +15,11 @@ if(len(sys.argv) != 2):
     print("Usage: {0} vdeurl\ne,g: {1} vxvde://234.0.0.1\n\n".format(name, name))
     exit(1)
 
-stack  = pycoxnet.Stack("picox", sys.argv[1])
+stack  = iothpy.Stack("vdestack", sys.argv[1])
 ifindex = stack.if_nametoindex("vde0")
 
-stack.ipaddr_add(pycoxnet.AF_INET, "10.0.0.2", 24, ifindex)
-sock = stack.socket(pycoxnet.AF_INET, pycoxnet.SOCK_DGRAM)
+stack.ipaddr_add(iothpy.AF_INET, "10.0.0.2", 24, ifindex)
+sock = stack.socket(iothpy.AF_INET, iothpy.SOCK_DGRAM)
 
 temp = getTemp()
 tempString = "%.2f"%temp

@@ -1,14 +1,14 @@
 #!/usr/bin/python3
 
-import pycoxnet
+import iothpy
 
-stack = pycoxnet.Stack("picox", "vxvde://234.0.0.1")
+stack = iothpy.Stack("vdestack", "vxvde://234.0.0.1")
 if_index = stack.if_nametoindex("vde0")
 
 stack.linksetupdown(if_index, 1)
-stack.ipaddr_add(pycoxnet.AF_INET, "10.0.0.1", 24, if_index)
+stack.ipaddr_add(iothpy.AF_INET, "10.0.0.1", 24, if_index)
 
-pycoxnet.override_socket_module(stack)
+iothpy.override_socket_module(stack)
 
 import http.server
 import socketserver

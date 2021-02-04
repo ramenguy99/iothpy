@@ -2,17 +2,33 @@
 
 This module defines the Stack class used to create a networking stack.
 
-TODO: examples
+To configure the stack you can use the following functions
 
+Get interface index:
+    if_nametoindex
+
+Link configuration:
+    linksetupdown
+    linkgetaddr
+    linksetaddr
+    iplink_add
+    iplink_del
+    linksetmtu
+
+IP configuration:
+    ipaddr_add
+    ipaddr_del
+    iproute_add
+    iproute_del
 """
 
-#Import pycoxnet c module
-from . import _pycoxnet
+#Import iothpy c module
+from . import _iothpy
 
 #Import msocket for the MSocket class
 from . import msocket
 
-class Stack(_pycoxnet.StackBase):
+class Stack(_iothpy.StackBase):
     """Stack class that represents a ioth networking stack
     
     Parameters
@@ -26,7 +42,7 @@ class Stack(_pycoxnet.StackBase):
     """
     def __init__(self, *arg, **kwarg):
         # Pass all arguments to the base class constructor
-       _pycoxnet.StackBase.__init__(self, *arg, **kwarg)
+       _iothpy.StackBase.__init__(self, *arg, **kwarg)
 
     def socket(self, family=-1, type=-1, proto=-1, fileno=None):
         """Create and return a new socket on this stack

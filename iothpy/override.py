@@ -3,12 +3,12 @@
 This module defines the function override_socket_module to allow
 the use of the built-in socket module with a custom networking stack.
 
-See help("pycoxnet.override_socket_module") for more information.
+See help("iothpy.override_socket_module") for more information.
 """
 
-from pycoxnet.msocket import MSocket
-from pycoxnet.stack import Stack
-import pycoxnet._pycoxnet as _pycoxnet
+from iothpy.msocket import MSocket
+from iothpy.stack import Stack
+import iothpy._iothpy as _iothpy
 
 def override_socket_module(stack):
     """Override built-in socket module so that it creates sockets on the specified stack
@@ -35,11 +35,11 @@ def override_socket_module(stack):
     socket_module.__dict__["socket"] = socket
 
     # Override defaulttimmeout functions
-    socket_module.__dict__["getdefaulttimeout"] = _pycoxnet.getdefaulttimeout
-    socket_module.__dict__["setdefaulttimeout"] = _pycoxnet.setdefaulttimeout
+    socket_module.__dict__["getdefaulttimeout"] = _iothpy.getdefaulttimeout
+    socket_module.__dict__["setdefaulttimeout"] = _iothpy.setdefaulttimeout
 
     # Override close
-    socket_module.__dict__["close"] = _pycoxnet.close
+    socket_module.__dict__["close"] = _iothpy.close
 
     # Override timeout exception
-    socket_module.__dict__["timeout"] = _pycoxnet.timeout
+    socket_module.__dict__["timeout"] = _iothpy.timeout

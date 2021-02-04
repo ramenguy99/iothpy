@@ -3,5 +3,5 @@ include README.md
 include setup.py
 include CMakeLists.txt
 include pyproject.toml
-recursive-include pycoxnet *
+recursive-include iothpy *
 global-exclude *.pyc

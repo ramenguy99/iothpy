@@ -5,8 +5,8 @@
 #define _GNU_SOURCE
 #endif
 
-#include "pycoxnet_stack.h"
-#include "pycoxnet_socket.h"
+#include "iothpy_stack.h"
+#include "iothpy_socket.h"
 
 #include <stdio.h>
 #include <stdlib.h>
@@ -22,8 +22,8 @@
 
 #include <libioth.h>
 
-PyDoc_STRVAR(pycoxnet_doc,
-"_pycoxnet c module\n\
+PyDoc_STRVAR(iothpy_doc,
+"_iothpy c module\n\
 \n\
 This module defines the base classes MSocketBase and StackBase\n\
 used to interface with the ioth c api. \n\
@@ -184,22 +184,22 @@ static PyMethodDef pycox_methods[] = {
 
 static struct PyModuleDef pycox_module = {
     PyModuleDef_HEAD_INIT,
-    "_pycoxnet",   /* name of module */
-    pycoxnet_doc,  /* module documentation, may be NULL */
+    "_iothpy",   /* name of module */
+    iothpy_doc,  /* module documentation, may be NULL */
     -1,            /* size of per-interpreter state of the module,
                       or -1 if the module keeps state in global variables. */
     pycox_methods
 };
 
 PyMODINIT_FUNC
-PyInit__pycoxnet(void)
+PyInit__iothpy(void)
 {
     Py_TYPE(&stack_type) = &PyType_Type;
     Py_TYPE(&socket_type) = &PyType_Type;
 
     PyObject* module = PyModule_Create(&pycox_module);
 
-    socket_timeout = PyErr_NewException("_pycoxnet.timeout",
+    socket_timeout = PyErr_NewException("_iothpy.timeout",
                                         PyExc_OSError, NULL);
     if (socket_timeout == NULL)
         return NULL;

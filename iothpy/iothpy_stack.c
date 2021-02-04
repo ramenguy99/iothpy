@@ -1,5 +1,5 @@
-#include "pycoxnet_stack.h"
-#include "pycoxnet_socket.h"
+#include "iothpy_stack.h"
+#include "iothpy_socket.h"
 
 #ifndef _GNU_SOURCE
 #define _GNU_SOURCE
@@ -125,6 +125,12 @@ stack_initobj(PyObject* self, PyObject* args, PyObject* kwds)
 
     s->stack = ioth_newstackv(stack_name, urls);
     free(multi_url_buf);
+
+    if(!s->stack) {
+        PyErr_SetFromErrno(PyExc_OSError);
+        return -1;
+    }
+    
     return 0;
 }
 
@@ -733,7 +739,7 @@ This class is used internally as a base type for the Stack class\n\
 
 PyTypeObject stack_type = {
   PyVarObject_HEAD_INIT(0, 0)                 /* Must fill in type value later */
-    "_pycoxnet.StackBase",                             /* tp_name */
+    "_iothpy.StackBase",                             /* tp_name */
     sizeof(stack_object),                       /* tp_basicsize */
     0,                                          /* tp_itemsize */
     (destructor)stack_dealloc,                  /* tp_dealloc */
