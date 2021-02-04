@@ -2,13 +2,25 @@
 
 import pycoxnet
 
-stack = pycoxnet.Stack("vdestack", "null://")
+stack = pycoxnet.stack("vdestack", "null://")
 if_index = stack.if_nametoindex("vde0")
 
 stack.linksetupdown(if_index, 1)
-stack.ipaddr_add(pycoxnet.AF_INET, "10.0.0.1", 24, if_index)
-stack.iproute_add(pycoxnet.AF_INET, "10.0.0.254")
+stack.ipaddr_add(pycoxnet.af_inet, "10.0.0.1", 24, if_index)
+stack.iproute_add(pycoxnet.af_inet, "10.0.0.254")
+stack.linksetaddr(if_index, "80:00:42:0e:e7:3a")
 
+s = stack.socket(pycoxnet.AF_INET, pycoxnet.SOCK_STREAM);
+
+addr = stack.linkgetaddr(if_index)
+print(addr.hex(), len(addr))
+stack.linksetmtu(if_index, 500)
+
+newaddr = bytes.fromhex("8000420ee73a")
+print(len(newaddr))
+
+addr = stack.linkgetaddr(if_index)
+print(addr.hex(), len(addr))
 
 # print(pycoxnet.getdefaulttimeout())
 # pycoxnet.setdefaulttimeout(2)

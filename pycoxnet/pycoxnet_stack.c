@@ -604,6 +604,104 @@ stack_iplink_del(stack_object *self, PyObject *args, PyObject *kwargs){
         return retvalue;
 }
 
+PyDoc_STRVAR(linkgetaddr_doc," linkgetaddr(ifindex)\n\
+Returns the MAC address of the interface ifindex as a bytearray of length 6.");
+
+static PyObject*
+stack_linkgetaddr(stack_object *self, PyObject *args) {
+    int ifindex;
+
+    if(!self->stack) 
+    {
+        PyErr_SetString(PyExc_Exception, "Uninitialized stack");
+        return NULL;
+    }
+
+
+    /* Parse arguments */
+    if(!PyArg_ParseTuple(args, "i", &ifindex)) {
+        return NULL;
+    }
+
+    PyObject* buf = PyBytes_FromStringAndSize((char *)NULL, 6);
+    if (buf == NULL)
+        return NULL;
+
+    int ret = 0;
+    if((ret = ioth_linkgetaddr(self->stack, ifindex, (void *)PyBytes_AS_STRING(buf))) < 0){
+        PyErr_SetString(PyExc_Exception, "failed to get MAC address");
+        return NULL;
+    }
+
+    return buf;
+}
+
+
+PyDoc_STRVAR(linksetaddr_doc," _linksetaddr(ifindex, macaddr)\n\
+Set the MAC address of the interface ifindex, macaddr must be a bytearray of length 6.");
+
+static PyObject*
+stack_linksetaddr(stack_object *self, PyObject *args) {
+    int ifindex;
+    Py_buffer addr;
+
+
+    if(!self->stack) 
+    {
+        PyErr_SetString(PyExc_Exception, "Uninitialized stack");
+        return NULL;
+    }
+
+
+    /* Parse arguments */
+    if(!PyArg_ParseTuple(args, "iy*", &ifindex, &addr)) {
+        return NULL;
+    }
+
+    if(addr.len != 6) {
+        PyErr_SetString(PyExc_ValueError, "MAC address must be of 6 bytes");
+    }
+
+    int ret = 0;
+    if((ret = ioth_linksetaddr(self->stack, ifindex, addr.buf) < 0)) {
+        PyErr_SetString(PyExc_Exception, "failed to set MAC address");
+        return NULL;
+    }
+
+    Py_RETURN_NONE;
+}
+
+
+PyDoc_STRVAR(linksetmtu_doc," linksetmtu(ifindex, mtu)\n\
+Set the MTU of the interface ifindex, mtu must be a positive integer");
+
+static PyObject*
+stack_linksetmtu(stack_object *self, PyObject *args) {
+    int ifindex;
+    int mtu;
+
+    if(!self->stack) 
+    {
+        PyErr_SetString(PyExc_Exception, "uninitialized stack");
+        return NULL;
+    }
+
+
+    /* Parse arguments */
+    if(!PyArg_ParseTuple(args, "ii", &ifindex, &mtu)) {
+        return NULL;
+    }
+
+    int ret = 0;
+    if((ret = ioth_linksetmtu(self->stack, ifindex, mtu) < 0)) {
+        PyErr_SetString(PyExc_Exception, "failed to set MAC address");
+        return NULL;
+    }
+
+    Py_RETURN_NONE;
+}
+
+
 static PyMethodDef stack_methods[] = {
     /* Listing network interfaces */
     {"if_nameindex", (PyCFunction)stack_if_nameindex, METH_NOARGS, if_nameindex_doc},
@@ -614,6 +712,10 @@ static PyMethodDef stack_methods[] = {
     {"linksetupdown", (PyCFunction)stack_linksetupdown, METH_VARARGS, linksetupdown_doc},
     {"iplink_add", (PyCFunction)stack_iplink_add, METH_VARARGS, iplink_add_doc},
     {"iplink_del", (PyCFunction)stack_iplink_del, METH_VARARGS | METH_KEYWORDS, iplink_del_doc},
+
+    {"linkgetaddr", (PyCFunction)stack_linkgetaddr, METH_VARARGS, linkgetaddr_doc},
+    {"_linksetaddr", (PyCFunction)stack_linksetaddr, METH_VARARGS, linksetaddr_doc},
+    {"linksetmtu",  (PyCFunction)stack_linksetmtu,  METH_VARARGS, linksetmtu_doc},
 
     {"ipaddr_add", (PyCFunction)stack_ipaddr_add, METH_VARARGS, ipaddr_add_doc},
     {"ipaddr_del", (PyCFunction)stack_ipaddr_del, METH_VARARGS, ipaddr_del_doc},

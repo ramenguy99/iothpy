@@ -36,3 +36,15 @@ class Stack(_pycoxnet.StackBase):
         """
         return msocket.MSocket(self, family, type, proto, fileno)
 
+
+    def linksetaddr(self, ifindex, addr):
+        """Set the MAC address of the interface ifindex");
+
+        ifindex must be an integer index, addr must be valid macaddr as a string or bytes object.
+        E.g. "80:00:42:0e:e7:3a" or b'\\x80\\x00\\x42\\x0e\\xe7\\x3a'
+        """
+        if isinstance(addr, str):
+            addr = addr.replace(":", "")
+            addr = bytearray.fromhex(addr)
+
+        self._linksetaddr(ifindex, addr)
