@@ -24,7 +24,7 @@
 #include <pthread.h>
 #include <arpa/inet.h>
 
-#include <libioth.h>
+#include <ioth.h>
 
 _PyTime_t defaulttimeout = _PYTIME_FROMSECONDS(-1);
 

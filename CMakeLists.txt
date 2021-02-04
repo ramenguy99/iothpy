@@ -9,7 +9,7 @@ include(CheckIncludeFile)
 # Check for picoxnet library and header files
 set(CMAKE_BUILD_TYPE Debug)
 set(LIBS_REQUIRED ioth)
-set(HEADERS_REQUIRED libioth.h)
+set(HEADERS_REQUIRED ioth.h)
 
 foreach(THISLIB IN LISTS LIBS_REQUIRED)
   find_library(LIB${THISLIB}_OK ${THISLIB})

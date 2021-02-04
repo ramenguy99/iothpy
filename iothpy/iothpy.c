@@ -20,7 +20,7 @@
 #include <pthread.h>
 #include <arpa/inet.h>
 
-#include <libioth.h>
+#include <ioth.h>
 
 PyDoc_STRVAR(iothpy_doc,
 "_iothpy c module\n\
