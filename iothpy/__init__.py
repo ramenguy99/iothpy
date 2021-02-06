@@ -1,9 +1,8 @@
 """
 Internet of threads library
 
-iothpy is a library for developing Internet of Threads applications using 
-python as a scripting language. It's built upon libioth and allows to 
-access all of its functionality in python.
+iothpy is a library for developing Internet of Threads applications.
+It's built upon libioth and allows to access all of its functionality in python.
 
 
 Here is an example of a basic creation and configuration of a networking 

@@ -196,7 +196,7 @@ python vhttp.py
 
 You can connect to the server by using a vdens shell:
 ```
-$ vdens vde:///tmp/mysw
+$ vdens vxvde://234.0.0.1
 $# ip link set vde0 up
 $# ip addr add 10.0.0.2/24 dev vde0
 $# wget http://10.0.0.1:8000/ 

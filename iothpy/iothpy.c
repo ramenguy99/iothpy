@@ -167,7 +167,7 @@ PyDoc_STRVAR(close_doc,
 Close an integer socket file descriptor.  This is like os.close(), but for\n\
 sockets; on some platforms os.close() won't work for socket file descriptors.");
 
-static PyMethodDef pycox_methods[] = {
+static PyMethodDef iothpy_methods[] = {
 #ifdef CMSG_LEN
     {"CMSG_LEN",   socket_CMSG_LEN, METH_VARARGS, CMSG_LEN_doc},
 #ifdef CMSG_SPACE
@@ -182,13 +182,13 @@ static PyMethodDef pycox_methods[] = {
     {NULL, NULL, 0, NULL}        /* Sentinel */
 };
 
-static struct PyModuleDef pycox_module = {
+static struct PyModuleDef iothpy_module = {
     PyModuleDef_HEAD_INIT,
     "_iothpy",   /* name of module */
     iothpy_doc,  /* module documentation, may be NULL */
     -1,            /* size of per-interpreter state of the module,
                       or -1 if the module keeps state in global variables. */
-    pycox_methods
+    iothpy_methods
 };
 
 PyMODINIT_FUNC
@@ -197,7 +197,7 @@ PyInit__iothpy(void)
     Py_TYPE(&stack_type) = &PyType_Type;
     Py_TYPE(&socket_type) = &PyType_Type;
 
-    PyObject* module = PyModule_Create(&pycox_module);
+    PyObject* module = PyModule_Create(&iothpy_module);
 
     socket_timeout = PyErr_NewException("_iothpy.timeout",
                                         PyExc_OSError, NULL);
