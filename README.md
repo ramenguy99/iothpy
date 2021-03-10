@@ -8,7 +8,7 @@ To get started with iothpy you need to have libioth installed and download iotph
 
 ```bash
 pip install scikit-build
-pip install iothpy
+pip install --no-deps --index-url https://test.pypi.org/simple iothpy==1.2.6 --no-build-isolation
 ```
 
 ## Getting started with iothpy
