@@ -193,9 +193,9 @@ static struct PyModuleDef iothpy_module = {
 
 PyMODINIT_FUNC
 PyInit__iothpy(void)
-{
-    Py_TYPE(&stack_type) = &PyType_Type;
-    Py_TYPE(&socket_type) = &PyType_Type;
+{ 
+    Py_SET_TYPE(&stack_type, &PyType_Type);
+    Py_SET_TYPE(&socket_type, &PyType_Type);
 
     PyObject* module = PyModule_Create(&iothpy_module);
 
