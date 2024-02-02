@@ -6,3 +6,6 @@ python -m twine upload --repository testpypi dist/iothpy-1.2.4.tar.gz
 
 # Download and install from testpypi
 pip install --no-deps --index-url https://test.pypi.org/simple iothpy==1.2.4 --no-build-isolation
+
+# Install iothpy from local repository
+pip install git+file://path/to/directory

@@ -20,6 +20,9 @@ IP configuration:
     ipaddr_del
     iproute_add
     iproute_del
+
+Or you can use a single method:
+    ioth_config
 """
 
 #Import iothpy c module

@@ -14,8 +14,6 @@ if(len(sys.argv) != 2):
 
 # Create and configure stack
 stack  = iothpy.Stack("vdestack", sys.argv[1])
-
-#default interface is vde0
 stack.ioth_config("eth, ip=10.0.0.2/24, gw=10.0.0.254/24")
 
 # Create a tcp socket and connect to server
