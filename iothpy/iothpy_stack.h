@@ -2,6 +2,7 @@
 #include <Python.h>
 
 #include <ioth.h>
+#include <iothconf.h>
 
 typedef struct stack_object {
     PyObject_HEAD

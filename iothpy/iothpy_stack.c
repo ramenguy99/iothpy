@@ -707,6 +707,36 @@ stack_linksetmtu(stack_object *self, PyObject *args) {
     Py_RETURN_NONE;
 }
 
+PyDoc_STRVAR(ioth_config_doc, "ioth_config(stack, config)\n\
+Configure the stack using the config string. The options supported\n\
+are listed here: https://github.com/virtualsquare/iothconf/tree/master .\n\
+An error may occur if the parameters are inconsistent.");
+
+static PyObject*
+stack_ioth_config(stack_object *self, PyObject *args){
+    char* config;
+
+    if(!self->stack) 
+    {
+        PyErr_SetString(PyExc_Exception, "uninitialized stack");
+        return NULL;
+    }
+
+    /* Parse arguments */
+    if(!PyArg_ParseTuple(args, "s", &config)){
+        return NULL;
+    }
+
+    int res = 0;
+    if(res = ioth_config(self->stack, config) < 0){
+        // TODO: change this error
+        PyErr_SetString(PyExc_Exception, "error in iothconf. Check args");
+        return NULL;
+    }
+
+    Py_RETURN_NONE;
+}
+
 
 static PyMethodDef stack_methods[] = {
     /* Listing network interfaces */
@@ -727,6 +757,9 @@ static PyMethodDef stack_methods[] = {
     {"ipaddr_del", (PyCFunction)stack_ipaddr_del, METH_VARARGS, ipaddr_del_doc},
     {"iproute_add", (PyCFunction)stack_iproute_add, METH_VARARGS | METH_KEYWORDS, iproute_add_doc},
     {"iproute_del", (PyCFunction)stack_iproute_del, METH_VARARGS | METH_KEYWORDS, iproute_del_doc},
+
+    /* Iothconf configuration */
+    {"ioth_config", (PyCFunction)stack_ioth_config, METH_VARARGS, ioth_config_doc},
 
     {NULL, NULL} /* sentinel */
 };
