@@ -14,9 +14,11 @@ if(len(sys.argv) != 2):
 # Create and configure stack
 stack = iothpy.Stack("stack=vdestack,vnl={0},eth, ip=10.0.0.1/24, gw=10.0.0.254/24".format(sys.argv[1]))
 
-
 # Create a tcp listening socket from
 sock = stack.socket(iothpy.AF_INET, iothpy.SOCK_STREAM)
+
+#check resolvconf
+print(stack.ioth_resolvconf(None))
 
 # From here on we can use the ioth socket as if we were using a python socket
 sock.bind(('', 5000))

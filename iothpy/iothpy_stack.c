@@ -16,6 +16,7 @@
 #include <netinet/in.h>
 #include <pthread.h>
 #include <arpa/inet.h>
+#include <errno.h>
 
 
 static void 
@@ -82,7 +83,7 @@ stack__init_iothconf(stack_object* s, PyObject* args, PyObject* kwds)
 
     if(!PyArg_ParseTuple(args, "s", &config))
         return -1;
-        
+
     s->stack = ioth_newstackc(config);
 
     if(!s->stack) {
@@ -742,13 +743,14 @@ stack_linksetmtu(stack_object *self, PyObject *args) {
     Py_RETURN_NONE;
 }
 
-PyDoc_STRVAR(ioth_config_doc, "ioth_config(stack, config)\n\
+PyDoc_STRVAR(ioth_config_doc, "ioth_config(config)\n\
 Configure the stack using the config string. The options supported\n\
 are listed here: https://github.com/virtualsquare/iothconf/tree/master .\n\
 An error may occur if the parameters are inconsistent.");
 
 static PyObject*
-stack_ioth_config(stack_object *self, PyObject *args){
+stack_ioth_config(stack_object *self, PyObject *args)
+{
     char* config;
 
     if(!self->stack) 
@@ -764,12 +766,47 @@ stack_ioth_config(stack_object *self, PyObject *args){
 
     int res = 0;
     if(res = ioth_config(self->stack, config) < 0){
-        // TODO: change this error
-        PyErr_SetString(PyExc_Exception, "error in iothconf. Check args");
+        PyErr_SetString(PyExc_Exception, "error in configuration. Check config options");
         return NULL;
     }
 
     Py_RETURN_NONE;
+}
+
+PyDoc_STRVAR(ioth_resolvconf_doc, "ioth_resolvconf(config)\n\
+Return a configuration string for the domain name resolution library.\n\
+The syntax of the configuration file is consistent with resolve.conf\n\
+It returns NULL and errno = 0 if nothing changed since the previous call.\n\
+In case of error it returns NULL and errno != 0.\n\
+config variable are iface and ifindex. Man iothconf for more info.");
+
+static PyObject*
+stack_ioth_resolvconf(stack_object *self, PyObject *args)
+{
+    char* config = NULL;
+    char* resolvConf = NULL;
+
+    /* parse config or set to NULL */
+    if(!PyArg_ParseTuple(args, "z", &config)){
+        PyErr_SetString(PyExc_Exception, "failed to parse config string");
+        return NULL;
+    }
+
+    resolvConf = ioth_resolvconf(self->stack, config);
+
+    if (resolvConf == NULL){
+        /* check for an error */
+        if(errno != 0){
+            PyErr_SetFromErrno(PyExc_OSError);
+            return NULL;
+        }
+        else{
+            PyErr_Clear();
+            Py_RETURN_NONE;
+        }
+    }
+
+    return Py_BuildValue("s", resolvConf);
 }
 
 
@@ -793,8 +830,9 @@ static PyMethodDef stack_methods[] = {
     {"iproute_add", (PyCFunction)stack_iproute_add, METH_VARARGS | METH_KEYWORDS, iproute_add_doc},
     {"iproute_del", (PyCFunction)stack_iproute_del, METH_VARARGS | METH_KEYWORDS, iproute_del_doc},
 
-    /* Iothconf configuration */
+    /* Iothconf */
     {"ioth_config", (PyCFunction)stack_ioth_config, METH_VARARGS, ioth_config_doc},
+    {"ioth_resolvconf", (PyCFunction)stack_ioth_resolvconf, METH_VARARGS, ioth_resolvconf_doc},
 
     {NULL, NULL} /* sentinel */
 };

@@ -18,7 +18,7 @@ setup (
        long_description_content_type="text/markdown",
        packages = ["iothpy"],
        classifiers = ["Operating System :: POSIX :: Linux"],
-       python_requires='>=3.6',
+       python_requires='>=3.12',
 
        #skbuild options
        cmake_args= [],
