@@ -76,10 +76,27 @@ stack_new(PyTypeObject* type, PyObject* args, PyObject *kwargs)
 }
 
 static int
-stack_initobj(PyObject* self, PyObject* args, PyObject* kwds)
-{
-    stack_object* s = (stack_object*)self;
+stack__init_iothconf(stack_object* s, PyObject* args, PyObject* kwds)
+{    
+    char* config = NULL;
+
+    if(!PyArg_ParseTuple(args, "s", &config))
+        return -1;
+        
+    s->stack = ioth_newstackc(config);
+
+    if(!s->stack) {
+        PyErr_SetFromErrno(PyExc_OSError);
+        return -1;
+    }
     
+    return 0;
+}
+
+static int
+stack__init(stack_object* s, PyObject* args, PyObject* kwds)
+{
+   
     char* stack_name = NULL;
     
     const char** urls = NULL;
@@ -130,8 +147,26 @@ stack_initobj(PyObject* self, PyObject* args, PyObject* kwds)
         PyErr_SetFromErrno(PyExc_OSError);
         return -1;
     }
-    
     return 0;
+}
+
+static int
+stack_init_(PyObject* self, PyObject* args, PyObject* kwds)
+{
+    stack_object* s = (stack_object*)self;
+
+    char* stack_name = NULL;
+    char* config = NULL;
+    int res = 0;
+
+    if(PyArg_ParseTuple(args, "s", &stack_name) && (config = strchr(stack_name, ',') != NULL))
+        res = stack__init_iothconf(s, args, kwds);
+    else{
+        PyErr_Clear();
+        res = stack__init(s, args, kwds);
+    }
+        
+    return res;
 }
 
 
@@ -806,7 +841,7 @@ PyTypeObject stack_type = {
     0,                                          /* tp_descr_get */
     0,                                          /* tp_descr_set */
     0,                                          /* tp_dictoffset */
-    stack_initobj,                              /* tp_init */
+    stack_init_,                                /* tp_init */
     PyType_GenericAlloc,                        /* tp_alloc */
     stack_new,                                  /* tp_new */
     PyObject_Del,                               /* tp_free */

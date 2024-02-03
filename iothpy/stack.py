@@ -22,7 +22,7 @@ IP configuration:
     iproute_del
 
 Or you can use a single method:
-    ioth_config
+    iothconfig
 """
 
 #Import iothpy c module
