@@ -163,7 +163,7 @@ stack_init_(PyObject* self, PyObject* args, PyObject* kwds)
     if(PyArg_ParseTuple(args, "s", &stack_name) && (config = strchr(stack_name, ',') != NULL))
         res = stack__init_iothconf(s, args, kwds);
     else{
-        PyErr_Clear();
+        PyErr_Clear();          //clear error raised by PyArg_ParseTuple
         res = stack__init(s, args, kwds);
     }
         
@@ -805,7 +805,6 @@ stack_ioth_resolvconf(stack_object *self, PyObject *args)
             Py_RETURN_NONE;
         }
     }
-
     return Py_BuildValue("s", resolvConf);
 }
 

@@ -14,7 +14,7 @@ if(len(sys.argv) != 2):
 
 # Create and configure stack
 stack  = iothpy.Stack("vdestack", sys.argv[1])
-stack.ioth_config("eth,iface=vde0, ip=10.0.0.2/24, gw=10.0.0.254/24")
+stack.ioth_config("eth,iface=vde0, ip=10.0.0.2/24, gw=10.0.0.254/2".format(sys.argv[1]))
 
 #check resolvconf
 print(stack.ioth_resolvconf("iface=vde0"))
