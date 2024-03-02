@@ -1,5 +1,7 @@
+#include "utils.h"
 #include "iothpy_stack.h"
 #include "iothpy_socket.h"
+
 
 #ifndef _GNU_SOURCE
 #define _GNU_SOURCE
@@ -17,6 +19,8 @@
 #include <pthread.h>
 #include <arpa/inet.h>
 #include <errno.h>
+
+#define IS_PATH(str) (strchr(str, '/') != NULL)
 
 
 static void 
@@ -71,84 +75,10 @@ stack_new(PyTypeObject* type, PyObject* args, PyObject *kwargs)
     stack_object* self = (stack_object*)new;
     if(self != NULL) {
         self->stack = NULL;
+        self->stack_dns = NULL;
     }
 
    return new;
-}
-
-static int
-stack__init_iothconf(stack_object* s, PyObject* args, PyObject* kwds)
-{    
-    char* config = NULL;
-
-    if(!PyArg_ParseTuple(args, "s", &config))
-        return -1;
-
-    s->stack = ioth_newstackc(config);
-
-    if(!s->stack) {
-        PyErr_SetFromErrno(PyExc_OSError);
-        return -1;
-    }
-    
-    return 0;
-}
-
-static int
-stack__init(stack_object* s, PyObject* args, PyObject* kwds)
-{
-   
-    char* stack_name = NULL;
-    
-    const char** urls = NULL;
-    const char* single_url_buf[2];
-    const char** multi_url_buf = NULL;
-    PyObject* list = NULL;
-
-    /* Parse an optional string */
-    if(PyArg_ParseTuple(args, "s|s", &stack_name, single_url_buf)) 
-    {
-        single_url_buf[1] = 0;
-        urls = single_url_buf;
-    } 
-    else 
-    {
-        /* If not a string we expect a list of strings */
-        PyErr_Clear();
-        if(!PyArg_ParseTuple(args, "s|O;first argument must be a string and second an optional string or list of strings", &stack_name, &list))
-            return -1;
-
-        char* argument_error = "Second argument must be a list of strings";
-        if(!PyList_Check(list)) {
-            PyErr_SetString(PyExc_ValueError, argument_error);
-            return -1;
-        }
-
-        /* Allocate enough space for each string plus the null sentinel */
-        Py_ssize_t len = PyList_Size(list);
-        multi_url_buf = malloc(sizeof(char*) * (len + 1));
-        for(Py_ssize_t i = 0; i < len; i++)
-        {
-            PyObject* string = PyList_GetItem(list, i);
-            if(!PyUnicode_Check(string)) {
-                PyErr_SetString(PyExc_ValueError, argument_error);
-                return -1;
-            }
-            const char* url = PyUnicode_AsUTF8(string);
-            multi_url_buf[i] = url;
-        }
-        multi_url_buf[len] = 0;
-        urls = multi_url_buf;
-    }
-
-    s->stack = ioth_newstackv(stack_name, urls);
-    free(multi_url_buf);
-
-    if(!s->stack) {
-        PyErr_SetFromErrno(PyExc_OSError);
-        return -1;
-    }
-    return 0;
 }
 
 static int
@@ -158,16 +88,70 @@ stack_init_(PyObject* self, PyObject* args, PyObject* kwds)
 
     char* stack_name = NULL;
     char* config = NULL;
-    int res = 0;
 
-    if(PyArg_ParseTuple(args, "s", &stack_name) && (config = strchr(stack_name, ',') != NULL))
-        res = stack__init_iothconf(s, args, kwds);
+    const char** urls = NULL;
+    const char* single_url_buf[2];
+    const char** multi_url_buf = NULL;
+    PyObject* list = NULL;
+
+    if(PyArg_ParseTuple(args, "s", &stack_name) && (strchr(stack_name, ',')) != NULL)
+        s->stack = ioth_newstackc(stack_name);
     else{
         PyErr_Clear();          //clear error raised by PyArg_ParseTuple
-        res = stack__init(s, args, kwds);
+
+        /* Parse an optional string */
+        if(PyArg_ParseTuple(args, "s|s", &stack_name, single_url_buf)) 
+        {
+            single_url_buf[1] = 0;
+            urls = single_url_buf;
+        } 
+        else 
+        {
+            /* If not a string we expect a list of strings */
+            PyErr_Clear();
+            if(!PyArg_ParseTuple(args, "s|O;first argument must be a string and second an optional string or list of strings", &stack_name, &list))
+                return -1;
+
+            char* argument_error = "Second argument must be a list of strings";
+            if(!PyList_Check(list)) {
+                PyErr_SetString(PyExc_ValueError, argument_error);
+                return -1;
+            }
+
+            /* Allocate enough space for each string plus the null sentinel */
+            Py_ssize_t len = PyList_Size(list);
+            multi_url_buf = malloc(sizeof(char*) * (len + 1));
+            for(Py_ssize_t i = 0; i < len; i++)
+            {
+                PyObject* string = PyList_GetItem(list, i);
+                if(!PyUnicode_Check(string)) {
+                    PyErr_SetString(PyExc_ValueError, argument_error);
+                    return -1;
+                }
+                const char* url = PyUnicode_AsUTF8(string);
+                multi_url_buf[i] = url;
+            }
+            multi_url_buf[len] = 0;
+            urls = multi_url_buf;
+        }
+
+        s->stack = ioth_newstackv(stack_name, urls);
+        free(multi_url_buf);
     }
-        
-    return res;
+
+    if(!s->stack) {
+        PyErr_SetFromErrno(PyExc_OSError);
+        return -1;
+    }
+
+    s->stack_dns = iothdns_init(s->stack, NULL);
+
+    if(!s->stack_dns){
+        PyErr_SetFromErrno(PyExc_OSError);
+        return -1;
+    }
+
+    return 0;
 }
 
 
@@ -808,6 +792,119 @@ stack_ioth_resolvconf(stack_object *self, PyObject *args)
     return Py_BuildValue("s", resolvConf);
 }
 
+PyDoc_STRVAR(stack_dns_upgrade_doc, "dns_update(config)\n\
+config can be path to resolv.conf syntax file or a string\n\
+written in same syntax of resolv.conf.");
+
+static PyObject*
+stack_dns_upgrade(stack_object* self, PyObject* args){
+    char* config = NULL;
+
+    if(self->stack_dns == NULL){
+        PyErr_SetString(PyExc_Exception, "Uninitialized dns");
+        return NULL;
+    }
+
+    if(!PyArg_ParseTuple(args, "s", &config))
+        return NULL;
+    
+    if(IS_PATH(config)){
+        if(iothdns_update(self->stack_dns, config) < 0){
+            PyErr_SetFromErrno(PyExc_SyntaxError);
+            return NULL;
+        }
+    } else {
+        if(iothdns_update_strcfg(self->stack_dns, config) < 0){
+            PyErr_SetFromErrno(PyExc_SyntaxError);
+            return NULL;
+        }
+    }
+    Py_RETURN_NONE;
+}
+
+
+PyDoc_STRVAR(dns_getaddrinfo_doc,"getaddrinfo(host, port, family=0, type=0, proto=0, flags=0)\n\
+It returns a tuple (addrinfo_list, code, mem_address), where code is 0 on success,\n\
+nonzero values on error. Check getaddrinfo(3) for more details.\n\
+'hints' and addrinfo_list are based on struct addrinfo\n\
+mem_address is the address in memory of the struct addrinfo.");
+
+static PyObject* dns_getaddrinfo(stack_object* self, PyObject* args, PyObject* kwargs){
+    static char* kwnames[] = {"host", "port", "family", "type", "proto", "flags", 0};
+    struct addrinfo hints, *res, *res0;
+    char *hoststr, *portstr;
+    PyObject* portObj;
+    PyObject* portObjStr = NULL;
+    PyObject* all = NULL;
+
+    int family, socktype, protocol, flags;
+    int error;
+
+    if(self->stack == NULL){
+        PyErr_SetString(PyExc_Exception, "Uninitialized stack");
+        return NULL;
+    }
+
+    socktype = protocol = flags = 0;
+    family = AF_UNSPEC;
+
+    if(!PyArg_ParseTupleAndKeywords(args,kwargs, "zO|iiii:getaddrinfo", kwnames, &hoststr, &portObj,  
+        &family, &socktype, &protocol, &flags))
+        return NULL;
+
+    if(PyLong_CheckExact(portObj)){
+        portObjStr = PyObject_Str(portObj);
+        if(portObjStr == NULL) return NULL;
+        portstr = PyUnicode_AsUTF8(portObjStr);
+    } else if(PyUnicode_Check(portObj)) {
+        portstr = PyUnicode_AsUTF8(portObj);
+    } else if(PyBytes_Check(portObj)){
+        portstr = PyBytes_AS_STRING(portObj);
+    } else if (portObj == Py_None){
+        portstr = NULL;
+    } else {
+        PyErr_SetString(PyExc_OSError, "Int or String expected");
+        return NULL;
+    }
+
+    memset(&hints, 0, sizeof(hints));
+    hints.ai_family = family;
+    hints.ai_socktype = socktype;
+    hints.ai_protocol = protocol;
+    hints.ai_flags = flags;
+
+    Py_BEGIN_ALLOW_THREADS
+    error = iothdns_getaddrinfo(self->stack_dns, hoststr, portstr, &hints, &res0);
+    Py_END_ALLOW_THREADS
+
+    if(error){
+        res0 = NULL;
+        //set_gaierror(get_module_state(self), error);
+        return NULL;
+    }
+
+    all = PyList_New(0);
+    if(all == NULL) return NULL;
+    for(res = res0; res; res= res -> ai_next){
+        PyObject* single;
+        PyObject* addr = make_sockaddr(res->ai_addr, res->ai_addrlen);
+        if(addr == NULL) return NULL;
+        single = Py_BuildValue("iiisO", res->ai_family,
+            res->ai_socktype, res->ai_protocol,
+            res->ai_canonname ? res->ai_canonname : "",
+            addr);
+        Py_DECREF(addr);
+        if(single == NULL) return NULL;
+        if(PyList_Append(all, single)){
+            Py_DECREF(single);
+            return NULL;
+        }
+        Py_DECREF(single);
+    }
+    if(res0) iothdns_freeaddrinfo(res0);
+    return all;
+}
+
 
 static PyMethodDef stack_methods[] = {
     /* Listing network interfaces */
@@ -832,6 +929,14 @@ static PyMethodDef stack_methods[] = {
     /* Iothconf */
     {"ioth_config", (PyCFunction)stack_ioth_config, METH_VARARGS, ioth_config_doc},
     {"ioth_resolvconf", (PyCFunction)stack_ioth_resolvconf, METH_VARARGS, ioth_resolvconf_doc},
+
+    /* Iothdns */
+
+    /* configuration */
+    {"dns_update", (PyCFunction)stack_dns_upgrade, METH_VARARGS, stack_dns_upgrade_doc},
+
+    /* queries */
+    {"getaddrinfo", (PyCFunctionWithKeywords)dns_getaddrinfo, METH_VARARGS | METH_KEYWORDS, dns_getaddrinfo_doc},
 
     {NULL, NULL} /* sentinel */
 };

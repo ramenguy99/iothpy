@@ -38,7 +38,7 @@ class Stack(_iothpy.StackBase):
     ----------
     stack : str
         Name of the ioth stack to be used (e.g. vdestack, picox, ...)
-    
+
     vdeurl: str or list of strings
         One or more vde urls, the stack will be initialized with one 
         interface connected to each of the vde urls specified

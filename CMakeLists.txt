@@ -9,7 +9,7 @@ include(CheckIncludeFile)
 # Check for picoxnet library and header files
 set(CMAKE_BUILD_TYPE Debug)
 set(LIBS_REQUIRED ioth)
-set(HEADERS_REQUIRED ioth.h iothconf.h)
+set(HEADERS_REQUIRED ioth.h iothconf.h iothdns.h)
 
 foreach(THISLIB IN LISTS LIBS_REQUIRED)
   find_library(LIB${THISLIB}_OK ${THISLIB})
@@ -26,10 +26,8 @@ foreach(HEADER IN LISTS HEADERS_REQUIRED)
 endforeach(HEADER)
 
 # Target for python extension module
-add_library(_iothpy MODULE iothpy/iothpy.c iothpy/iothpy_socket.c iothpy/iothpy_stack.c)
-target_link_libraries(_iothpy -lioth -liothconf)
+add_library(_iothpy MODULE iothpy/iothpy.c iothpy/iothpy_socket.c iothpy/iothpy_stack.c iothpy/utils.c)
+target_link_libraries(_iothpy -lioth -liothconf -liothdns)
 python_extension_module(_iothpy)
 
 install(TARGETS _iothpy LIBRARY DESTINATION iothpy)
-
-

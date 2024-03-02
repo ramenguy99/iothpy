@@ -17,7 +17,7 @@ stack  = iothpy.Stack("vdestack", sys.argv[1])
 stack.ioth_config("eth,iface=vde0, ip=10.0.0.2/24, gw=10.0.0.254/2".format(sys.argv[1]))
 
 #check resolvconf
-print(stack.ioth_resolvconf("iface=vde0"))
+#print(stack.ioth_resolvconf("iface=vde0"))
 
 # Create a tcp socket and connect to server
 sock = stack.socket(iothpy.AF_INET, iothpy.SOCK_STREAM)
