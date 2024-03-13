@@ -867,11 +867,14 @@ static PyObject* dns_getaddrinfo(stack_object* self, PyObject* args, PyObject* k
         return NULL;
     }
 
+    
+
     memset(&hints, 0, sizeof(hints));
     hints.ai_family = family;
     hints.ai_socktype = socktype;
     hints.ai_protocol = protocol;
     hints.ai_flags = flags;
+    
 
     Py_BEGIN_ALLOW_THREADS
     error = iothdns_getaddrinfo(self->stack_dns, hoststr, portstr, &hints, &res0);
@@ -893,10 +896,10 @@ static PyObject* dns_getaddrinfo(stack_object* self, PyObject* args, PyObject* k
             res->ai_socktype, res->ai_protocol,
             res->ai_canonname ? res->ai_canonname : "",
             addr);
-        Py_DECREF(addr);
+        Py_XDECREF(addr);
         if(single == NULL) return NULL;
         if(PyList_Append(all, single)){
-            Py_DECREF(single);
+            Py_XDECREF(single);
             return NULL;
         }
         Py_DECREF(single);

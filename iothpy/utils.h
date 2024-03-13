@@ -16,10 +16,10 @@
 
 /* Utility to create a tuple representing the given sockaddr suitable
    for passing it back to bind, connect etc.. */
-static PyObject* make_sockaddr(struct sockaddr *addr, size_t addrlen);
+PyObject* make_sockaddr(struct sockaddr *addr, size_t addrlen);
 
 /* Convert IPv4 sockaddr to a Python str. */
-static PyObject* make_ipv4_addr(struct sockaddr_in *addr);
+PyObject* make_ipv4_addr(struct sockaddr_in *addr);
 
 /* Convert IPv6 sockaddr to a Python str. */
-static PyObject* make_ipv6_addr(struct sockaddr_in6 *addr);
+PyObject* make_ipv6_addr(struct sockaddr_in6 *addr);

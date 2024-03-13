@@ -2,8 +2,7 @@
 
 /* Utility to create a tuple representing the given sockaddr suitable
    for passing it back to bind, connect etc.. */
-static PyObject *
-make_sockaddr(struct sockaddr *addr, size_t addrlen)
+PyObject * make_sockaddr(struct sockaddr *addr, size_t addrlen)
 {
     if (addrlen == 0) {
         /* No address -- may be recvfrom() from known socket */
@@ -48,8 +47,7 @@ make_sockaddr(struct sockaddr *addr, size_t addrlen)
 
 
 /* Convert IPv4 sockaddr to a Python str. */
-static PyObject *
-make_ipv4_addr(struct sockaddr_in *addr)
+PyObject * make_ipv4_addr(struct sockaddr_in *addr)
 {
     char buf[INET_ADDRSTRLEN];
     if (inet_ntop(AF_INET, &addr->sin_addr, buf, sizeof(buf)) == NULL) {
@@ -60,8 +58,7 @@ make_ipv4_addr(struct sockaddr_in *addr)
 }
 
 /* Convert IPv6 sockaddr to a Python str. */
-static PyObject *
-make_ipv6_addr(struct sockaddr_in6 *addr)
+PyObject * make_ipv6_addr(struct sockaddr_in6 *addr)
 {
     char buf[INET6_ADDRSTRLEN];
     if (inet_ntop(AF_INET6, &addr->sin6_addr, buf, sizeof(buf)) == NULL) {
