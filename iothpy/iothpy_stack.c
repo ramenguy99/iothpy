@@ -22,7 +22,6 @@
 
 #define IS_PATH(str) (strchr(str, '/') != NULL)
 
-
 static void 
 stack_dealloc(stack_object* self)
 {
@@ -144,12 +143,15 @@ stack_init_(PyObject* self, PyObject* args, PyObject* kwds)
         return -1;
     }
 
-    s->stack_dns = iothdns_init(s->stack, NULL);
+    s->stack_dns = iothdns_init_strcfg(s->stack,  "nameserver 1.1.1.1");
+
 
     if(!s->stack_dns){
         PyErr_SetFromErrno(PyExc_OSError);
         return -1;
     }
+
+    printf("DNS CONFIGURATO\n");
 
     return 0;
 }
@@ -823,15 +825,13 @@ stack_dns_upgrade(stack_object* self, PyObject* args){
 }
 
 
-PyDoc_STRVAR(dns_getaddrinfo_doc,"getaddrinfo(host, port, family=0, type=0, proto=0, flags=0)\n\
-It returns a tuple (addrinfo_list, code, mem_address), where code is 0 on success,\n\
-nonzero values on error. Check getaddrinfo(3) for more details.\n\
-'hints' and addrinfo_list are based on struct addrinfo\n\
-mem_address is the address in memory of the struct addrinfo.");
+PyDoc_STRVAR(dns_getaddrinfo_doc,"getaddrinfo(host, port, family=0, type=0, proto=0, flags=0)");
+
 
 static PyObject* dns_getaddrinfo(stack_object* self, PyObject* args, PyObject* kwargs){
     static char* kwnames[] = {"host", "port", "family", "type", "proto", "flags", 0};
-    struct addrinfo hints, *res, *res0;
+    struct addrinfo hints, *res;
+    struct addrinfo *resList = NULL;
     char *hoststr, *portstr;
     PyObject* portObj;
     PyObject* portObjStr = NULL;
@@ -848,7 +848,7 @@ static PyObject* dns_getaddrinfo(stack_object* self, PyObject* args, PyObject* k
     socktype = protocol = flags = 0;
     family = AF_UNSPEC;
 
-    if(!PyArg_ParseTupleAndKeywords(args,kwargs, "zO|iiii:getaddrinfo", kwnames, &hoststr, &portObj,  
+    if(!PyArg_ParseTupleAndKeywords(args,kwargs, "zO|iiii", kwnames, &hoststr, &portObj,  
         &family, &socktype, &protocol, &flags))
         return NULL;
 
@@ -875,20 +875,17 @@ static PyObject* dns_getaddrinfo(stack_object* self, PyObject* args, PyObject* k
     hints.ai_protocol = protocol;
     hints.ai_flags = flags;
     
-
-    Py_BEGIN_ALLOW_THREADS
-    error = iothdns_getaddrinfo(self->stack_dns, hoststr, portstr, &hints, &res0);
-    Py_END_ALLOW_THREADS
+    error = iothdns_getaddrinfo(self->stack_dns, hoststr, portstr, &hints, &resList);
 
     if(error){
-        res0 = NULL;
+        resList = NULL;
         //set_gaierror(get_module_state(self), error);
         return NULL;
     }
 
     all = PyList_New(0);
     if(all == NULL) return NULL;
-    for(res = res0; res; res= res -> ai_next){
+    for(res = resList; res; res= res -> ai_next){
         PyObject* single;
         PyObject* addr = make_sockaddr(res->ai_addr, res->ai_addrlen);
         if(addr == NULL) return NULL;
@@ -902,9 +899,9 @@ static PyObject* dns_getaddrinfo(stack_object* self, PyObject* args, PyObject* k
             Py_XDECREF(single);
             return NULL;
         }
-        Py_DECREF(single);
+        Py_XDECREF(single);
     }
-    if(res0) iothdns_freeaddrinfo(res0);
+    if(resList) iothdns_freeaddrinfo(resList);
     return all;
 }
 
