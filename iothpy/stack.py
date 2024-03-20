@@ -38,14 +38,19 @@ class Stack(_iothpy.StackBase):
     ----------
     stack : str
         Name of the ioth stack to be used (e.g. vdestack, picox, ...)
+        Can contain the configuration. vdeurl in this case is not used.
 
     vdeurl: str or list of strings
+        Optional if stack string contain configuration.
         One or more vde urls, the stack will be initialized with one 
         interface connected to each of the vde urls specified
+
+    config_dns : str
+        Path or string of the configuration for iothdns. Default is "/etc/resolv.conf"
     """
-    def __init__(self, *arg, **kwarg):
+    def __init__(self, stack, vdeurl = None, config_dns = None ):
         # Pass all arguments to the base class constructor
-       _iothpy.StackBase.__init__(self, *arg, **kwarg)
+       _iothpy.StackBase.__init__(self, stack, vdeurl, config_dns)
 
     def socket(self, family=-1, type=-1, proto=-1, fileno=None):
         """Create and return a new socket on this stack

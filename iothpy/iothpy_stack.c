@@ -80,49 +80,71 @@ stack_new(PyTypeObject* type, PyObject* args, PyObject *kwargs)
    return new;
 }
 
+static int stack_dns_init(stack_object* self, char* config){
+    if (config == NULL || IS_PATH(config)){
+        self -> stack_dns = iothdns_init(self->stack, config);
+    } else{
+        self -> stack_dns = iothdns_init_strcfg(self->stack, config);
+    }
+
+    if(self->stack_dns == NULL){
+        PyErr_SetFromErrno(PyExc_OSError);
+        return -1;
+    }
+    return 0;
+}
+
 static int
-stack_init_(PyObject* self, PyObject* args, PyObject* kwds)
+stack_init_(PyObject* self, PyObject* args, PyObject* kwargs)
 {
     stack_object* s = (stack_object*)self;
 
+    PyObject* vdeurl = NULL;
+
+    char* config_dns = NULL;
     char* stack_name = NULL;
-    char* config = NULL;
 
     const char** urls = NULL;
     const char* single_url_buf[2];
     const char** multi_url_buf = NULL;
-    PyObject* list = NULL;
 
-    if(PyArg_ParseTuple(args, "s", &stack_name) && (strchr(stack_name, ',')) != NULL)
+    if(!PyArg_ParseTuple(args, "s|Oz", &stack_name, &vdeurl, &config_dns)){
+        PyErr_SetFromErrno(PyExc_OSError);
+        return -1;
+    }
+
+    if(stack_dns_init(s, config_dns) < 0) {
+        PyErr_SetFromErrno(PyExc_OSError);
+        return -1;
+    }
+
+    if(vdeurl == NULL){
+        /*stack interface in configuration string */
         s->stack = ioth_newstackc(stack_name);
+    }
     else{
-        PyErr_Clear();          //clear error raised by PyArg_ParseTuple
-
-        /* Parse an optional string */
-        if(PyArg_ParseTuple(args, "s|s", &stack_name, single_url_buf)) 
-        {
+        /* check if vde url is a string or a list of strings */
+        if(PyUnicode_Check(vdeurl)){
+            single_url_buf[0] = PyUnicode_AsUTF8(vdeurl);
             single_url_buf[1] = 0;
             urls = single_url_buf;
-        } 
-        else 
-        {
-            /* If not a string we expect a list of strings */
-            PyErr_Clear();
-            if(!PyArg_ParseTuple(args, "s|O;first argument must be a string and second an optional string or list of strings", &stack_name, &list))
-                return -1;
-
-            char* argument_error = "Second argument must be a list of strings";
-            if(!PyList_Check(list)) {
+        } else if(PyBytes_Check(vdeurl)){
+            single_url_buf[0] = PyBytes_AS_STRING(vdeurl);
+            single_url_buf[1] = 0;
+            urls = single_url_buf;
+        }else {
+            char* argument_error = "vdeurl argument must be a string or a list of strings";
+            if(!PyList_Check(vdeurl)) {
                 PyErr_SetString(PyExc_ValueError, argument_error);
                 return -1;
             }
 
             /* Allocate enough space for each string plus the null sentinel */
-            Py_ssize_t len = PyList_Size(list);
+            Py_ssize_t len = PyList_Size(vdeurl);
             multi_url_buf = malloc(sizeof(char*) * (len + 1));
             for(Py_ssize_t i = 0; i < len; i++)
             {
-                PyObject* string = PyList_GetItem(list, i);
+                PyObject* string = PyList_GetItem(vdeurl, i);
                 if(!PyUnicode_Check(string)) {
                     PyErr_SetString(PyExc_ValueError, argument_error);
                     return -1;
@@ -134,6 +156,7 @@ stack_init_(PyObject* self, PyObject* args, PyObject* kwds)
             urls = multi_url_buf;
         }
 
+
         s->stack = ioth_newstackv(stack_name, urls);
         free(multi_url_buf);
     }
@@ -143,15 +166,7 @@ stack_init_(PyObject* self, PyObject* args, PyObject* kwds)
         return -1;
     }
 
-    s->stack_dns = iothdns_init_strcfg(s->stack,  "nameserver 1.1.1.1");
 
-
-    if(!s->stack_dns){
-        PyErr_SetFromErrno(PyExc_OSError);
-        return -1;
-    }
-
-    printf("DNS CONFIGURATO\n");
 
     return 0;
 }
@@ -825,7 +840,14 @@ stack_dns_upgrade(stack_object* self, PyObject* args){
 }
 
 
-PyDoc_STRVAR(dns_getaddrinfo_doc,"getaddrinfo(host, port, family=0, type=0, proto=0, flags=0)");
+PyDoc_STRVAR(dns_getaddrinfo_doc,"getaddrinfo(host, port, family=0, type=0, proto=0, flags=0)\n\
+host is a domain name, a string representation of an IPv4/v6 address or None.\n\
+port is a string service name such as 'http', a numeric port number or None.\n\
+The family, type and proto arguments can be optionally specified in order to\n\
+narrow the list of addresses returned.\n\
+The function returns a list of 5-tuples with the following structure:\n\
+
+(family, type, proto, canonname, sockaddr)");
 
 
 static PyObject* dns_getaddrinfo(stack_object* self, PyObject* args, PyObject* kwargs){
@@ -933,7 +955,7 @@ static PyMethodDef stack_methods[] = {
     /* Iothdns */
 
     /* configuration */
-    {"dns_update", (PyCFunction)stack_dns_upgrade, METH_VARARGS, stack_dns_upgrade_doc},
+    {"iothdns_update", (PyCFunction)stack_dns_upgrade, METH_VARARGS, stack_dns_upgrade_doc},
 
     /* queries */
     {"getaddrinfo", (PyCFunctionWithKeywords)dns_getaddrinfo, METH_VARARGS | METH_KEYWORDS, dns_getaddrinfo_doc},
@@ -983,7 +1005,7 @@ PyTypeObject stack_type = {
     0,                                          /* tp_descr_get */
     0,                                          /* tp_descr_set */
     0,                                          /* tp_dictoffset */
-    stack_init_,                                /* tp_init */
+    (initproc)stack_init_,                      /* tp_init */
     PyType_GenericAlloc,                        /* tp_alloc */
     stack_new,                                  /* tp_new */
     PyObject_Del,                               /* tp_free */
