@@ -31,6 +31,9 @@ from . import _iothpy
 #Import msocket for the MSocket class
 from . import msocket
 
+#Import function and classes to get getaddrinfo like built-in
+from socket import _intenum_converter, AddressFamily, SocketKind
+
 class Stack(_iothpy.StackBase):
     """Stack class that represents a ioth networking stack
     
@@ -72,3 +75,12 @@ class Stack(_iothpy.StackBase):
             addr = bytearray.fromhex(addr)
 
         self._linksetaddr(ifindex, addr)
+
+    def getaddrinfo(self, *args, **kwargs):
+        addrlist = []
+        for res in _iothpy.StackBase.getaddrinfo(self, *args,**kwargs):
+            af, socktype, proto, canonname, sa = res
+            addrlist.append((_intenum_converter(af, AddressFamily),
+                            _intenum_converter(socktype, SocketKind),
+                            proto, canonname, sa))
+        return addrlist

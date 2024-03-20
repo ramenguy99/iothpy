@@ -846,7 +846,7 @@ port is a string service name such as 'http', a numeric port number or None.\n\
 The family, type and proto arguments can be optionally specified in order to\n\
 narrow the list of addresses returned.\n\
 The function returns a list of 5-tuples with the following structure:\n\
-
+\n\
 (family, type, proto, canonname, sockaddr)");
 
 
