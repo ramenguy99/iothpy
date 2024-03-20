@@ -18,7 +18,7 @@ stack  = iothpy.Stack("vdestack", sys.argv[1])
 stack.ioth_config("eth,ip=10.0.0.53/24,gw=10.0.0.1".format(sys.argv[1]))
 
 #check addrinfo
-print(stack.getaddrinfo("mad.cs.unibo.it","domain"))
+print(stack.getaddrinfo("pippolonia.com","sbrodolandfia"))
 
 
 # Create a tcp socket and connect to server

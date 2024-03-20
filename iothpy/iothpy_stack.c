@@ -901,8 +901,7 @@ static PyObject* dns_getaddrinfo(stack_object* self, PyObject* args, PyObject* k
 
     if(error){
         resList = NULL;
-        //set_gaierror(get_module_state(self), error);
-        return NULL;
+        return Py_BuildValue("is", error, iothdns_gai_strerror(error));
     }
 
     all = PyList_New(0);

@@ -32,7 +32,7 @@ from . import _iothpy
 from . import msocket
 
 #Import function and classes to get getaddrinfo like built-in
-from socket import _intenum_converter, AddressFamily, SocketKind
+from socket import _intenum_converter, AddressFamily, SocketKind, gaierror
 
 class Stack(_iothpy.StackBase):
     """Stack class that represents a ioth networking stack
@@ -77,10 +77,18 @@ class Stack(_iothpy.StackBase):
         self._linksetaddr(ifindex, addr)
 
     def getaddrinfo(self, *args, **kwargs):
-        addrlist = []
-        for res in _iothpy.StackBase.getaddrinfo(self, *args,**kwargs):
-            af, socktype, proto, canonname, sa = res
-            addrlist.append((_intenum_converter(af, AddressFamily),
-                            _intenum_converter(socktype, SocketKind),
-                            proto, canonname, sa))
-        return addrlist
+
+        res = _iothpy.StackBase.getaddrinfo(self, *args,**kwargs)
+
+        if(not isinstance(res, list)):
+            raise gaierror(res[1])
+        
+        else:
+            addrlist = []
+
+            for res in _iothpy.StackBase.getaddrinfo(self, *args,**kwargs):
+                af, socktype, proto, canonname, sa = res
+                addrlist.append((_intenum_converter(af, AddressFamily),
+                                _intenum_converter(socktype, SocketKind),
+                                proto, canonname, sa))
+            return addrlist
