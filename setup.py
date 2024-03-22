@@ -30,10 +30,10 @@ with open("README.md", "r") as f:
 setup (
        #setuptools options
        name = 'iothpy',
-       version = '1.2.6',
-       author = 'Dario Mylonopoulos',
-       author_email = 'dmylos@yahoo.it',
-       url = 'https://github.com/ramenguy99/iothpy',
+       version = '1.2.7',
+       author = 'Dario Mylonopoulos, Francesco Testa',
+       author_email = 'dmylos@yahoo.it, francescotesta2002@hotmail.it',
+       url = 'https://github.com/Tiestaa/iothpy',
        description = 'Python library for internet of threads',
        long_description = long_description,
        long_description_content_type="text/markdown",
