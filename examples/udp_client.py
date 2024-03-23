@@ -19,6 +19,8 @@ stack  = iothpy.Stack("vdestack", sys.argv[1])
 ifindex = stack.if_nametoindex("vde0")
 
 stack.ipaddr_add(iothpy.AF_INET, "10.0.0.2", 24, ifindex)
+stack.linksetupdown(ifindex, True)
+
 sock = stack.socket(iothpy.AF_INET, iothpy.SOCK_DGRAM)
 
 temp = getTemp()
@@ -28,4 +30,4 @@ sock.sendto(tempString.encode(), ("10.0.0.1", 5000))
 response = sock.recv(1024)
 
 print(response.decode())
-
+ 

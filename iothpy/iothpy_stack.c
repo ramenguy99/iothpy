@@ -139,7 +139,7 @@ stack_init_(PyObject* self, PyObject* args, PyObject* kwargs)
         return -1;
     }
 
-    if(vdeurl == NULL){
+    if(vdeurl == Py_None){
         /*stack interface in configuration string */
         s->stack = ioth_newstackc(stack_name);
     }

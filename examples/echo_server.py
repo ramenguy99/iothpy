@@ -18,6 +18,9 @@ stack.linksetupdown(ifindex, 1)
 stack.ipaddr_add(iothpy.AF_INET, "10.0.0.1", 24, ifindex)
 stack.iproute_add(iothpy.AF_INET, "10.0.0.254")
 
+# To create and configure stack, you can use also:
+# stack = iothpy.Stack("stack=vdestack,vnl={0},eth, ip=10.0.0.1/24".format(sys.argv[1]))
+
 # Create a tcp listening socket from
 sock = stack.socket(iothpy.AF_INET, iothpy.SOCK_STREAM)
 
@@ -42,4 +45,3 @@ while True:
     # Create a new thread to handle multiple concurrent connections
     t = threading.Thread(target = handle, args=(conn, addr), daemon=True)
     t.start()
-

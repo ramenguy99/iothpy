@@ -125,6 +125,9 @@ stack.linksetupdown(ifindex, 1)
 stack.ipaddr_add(iothpy.AF_INET, "10.0.0.2", 24, ifindex)
 stack.iproute_add(iothpy.AF_INET, "10.0.0.254")
 
+# To configure the stack, you can use the single function:
+# stack.ioth_config("eth,ip=10.0.0.53/24,gw=10.0.0.1".format(sys.argv[1]))
+
 # Create a tcp socket and connect to server
 sock = stack.socket(iothpy.AF_INET, iothpy.SOCK_STREAM)
 
@@ -157,4 +160,34 @@ while(True):
                 break
 ```
 
-You can test
+You can test also the getaddrinfo(). 
+
+Note: this example need [`libvdeslirp`](https://github.com/virtualsquare/libvdeslirp)
+
+```py
+#file gai.py:
+
+import iothpy
+
+#create and configure stack
+stack = iothpy.Stack("vdestack","slirp://")
+stack.ioth_config("auto")
+
+# host and port to connect to
+host ="www.google.com"
+port = 80
+
+addrinfos = stack.getaddrinfo(host, port)
+
+print(f"All addresses info of {host}, port {port}:\n\n{addrinfos}]\n")
+
+family, type, proto, _, sockaddr = addrinfos[0]
+print(f"Address 0 info, used as test:\n{addrinfos[0]}.\nSo the address to connect the socket is:\n{sockaddr}\n")
+
+# create socket from the stack
+socket = stack.socket(family, type, proto)
+
+socket.connect(sockaddr)
+
+print("Connection established to ", socket.getpeername())
+```

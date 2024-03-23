@@ -1,28 +1,23 @@
 import iothpy
 
-
-
 #create and configure stack
-stack = iothpy.Stack("vdestack","vxvde://234.0.0.1")
+stack = iothpy.Stack("vdestack","slirp://")
+stack.ioth_config("auto")
 
-stack.ioth_config("eth,ip=10.0.0.53/24,gw=10.0.0.1")
-
-link = "/about"
-host = "www.python.org"
+# host and port to connect to
+host ="www.google.com"
 port = 80
-
 
 addrinfos = stack.getaddrinfo(host, port)
 
-print(addrinfos)
+print(f"All addresses info of {host}, port {port}:\n\n{addrinfos}]\n")
 
-addinfo_test = addrinfos[0]
-print(addinfo_test)
+family, type, proto, _, sockaddr = addrinfos[0]
+print(f"Address 0 info, used as test:\n{addrinfos[0]}.\nSo the address to connect the socket is:\n{sockaddr}\n")
 
 # create socket from the stack
-socket = stack.socket()
+socket = stack.socket(family, type, proto)
 
-socket.connect(addinfo_test[4])
-msg = "GET " + link + " HTTP/1.0\r\n\r\n"
-s.sendall(msg)
-s.recv(4096)
+socket.connect(sockaddr)
+
+print("Connection established to ", socket.getpeername())
