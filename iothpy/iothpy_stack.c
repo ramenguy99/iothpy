@@ -116,7 +116,7 @@ static int stack_dns_init(stack_object* self, char* config){
 }
 
 static int
-stack_init_(PyObject* self, PyObject* args, PyObject* kwargs)
+stack_initobj(PyObject* self, PyObject* args, PyObject* kwargs)
 {
     stack_object* s = (stack_object*)self;
 
@@ -766,8 +766,29 @@ stack_linksetmtu(stack_object *self, PyObject *args) {
 }
 
 PyDoc_STRVAR(ioth_config_doc, "ioth_config(config)\n\
-Configure the stack using the config string. The options supported\n\
-are listed here: https://github.com/virtualsquare/iothconf/tree/master .\n\
+Configure the stack using the config string. The options supported are:\n\
+\n\
+    stack=...: (ioth_newstackc only) define the ip stack implementation\n\
+    vnl=...: (ioth_newstackc only) define the vde network to join\n\
+    iface=... : select the interface e.g. iface=eth0 (default value vde0)\n\
+    ifindex=... : id of the interface (it can be used instead of iface)\n\
+    fqdn=.... : set the fully qualified domain name for dhcp, dhcpv6 slaac-hash-autoconf\n\
+    mac=... : (or macaddr) define the macaddr for eth here below. (e.g. eth,mac=10:a1:b2:c3:d4:e5)\n\
+    eth : turn on the interface (and set the MAC address if requested or a hash based MAC address if fqdn is defined)\n\
+    dhcp : (or dhcp4 or dhcpv4) use dhcp (IPv4)\n\
+    dhcp6 : (or dhcpv6) use dhcpv6 (for IPv6)\n\
+    rd : (or rd6) use the router discovery protocol (IPv6)\n\
+    slaac : use stateless auto-configuration (IPv6) (requires rd)\n\
+    auto : shortcut for eth+dhcp+dhcp6+rd\n\
+    auto4 : (or autov4) shortcut for eth+dhcp\n\
+    auto6 : (or autov6) shortcut for eth+dhcp6+rd\n\
+    ip=..../.. : set a static address IPv4 or IPv6 and its prefix length example: ip=10.0.0.100/24 or ip=2001:760:1:2::100/64\n\
+    gw=..... : set a static default route IPv4 or IPv6\n\
+    dns=.... : set a static address for a DNS server\n\
+    domain=.... : set a static domain for the dns search\n\
+    debug : show the status of the current configuration parameters\n\
+    -static, -eth, -dhcp, -dhcp6, -rd, -auto, -auto4, -auto6 (and all the synonyms + a heading minus) clean (undo) the configuration\n\
+\n\
 An error may occur if the parameters are inconsistent.");
 
 static PyObject*
@@ -798,8 +819,6 @@ stack_ioth_config(stack_object *self, PyObject *args)
 PyDoc_STRVAR(ioth_resolvconf_doc, "ioth_resolvconf(config)\n\
 Return a configuration string for the domain name resolution library.\n\
 The syntax of the configuration file is consistent with resolve.conf\n\
-It returns NULL and errno = 0 if nothing changed since the previous call.\n\
-In case of error it returns NULL and errno != 0.\n\
 config variable are iface and ifindex. Man iothconf for more info.");
 
 static PyObject*
@@ -1025,7 +1044,7 @@ PyTypeObject stack_type = {
     0,                                          /* tp_descr_get */
     0,                                          /* tp_descr_set */
     0,                                          /* tp_dictoffset */
-    (initproc)stack_init_,                      /* tp_init */
+    stack_initobj,                              /* tp_init */
     PyType_GenericAlloc,                        /* tp_alloc */
     stack_new,                                  /* tp_new */
     PyObject_Del,                               /* tp_free */

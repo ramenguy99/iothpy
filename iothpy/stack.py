@@ -105,6 +105,10 @@ class Stack(_iothpy.StackBase):
         self._linksetaddr(ifindex, addr)
 
     def getaddrinfo(self, *args, **kwargs):
+        """Returns all the addresses info of host and port take as parameters.
+        
+        This method takes the same parameters as the builtin socket.getaddrinfo().
+        """
 
         res = _iothpy.StackBase.getaddrinfo(self, *args,**kwargs)
 
