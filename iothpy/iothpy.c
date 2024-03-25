@@ -215,9 +215,13 @@ static struct PyModuleDef iothpy_module = {
 PyMODINIT_FUNC
 PyInit__iothpy(void)
 { 
+#if PY_MINOR_VERSION > 9
     Py_SET_TYPE(&stack_type, &PyType_Type);
     Py_SET_TYPE(&socket_type, &PyType_Type);
-
+#else
+    Py_TYPE(&stack_type) = &PyType_Type;
+    Py_TYPE(&socket_type) = &PyType_Type;
+#endif
     PyObject* module = PyModule_Create(&iothpy_module);
 
     socket_timeout = PyErr_NewException("_iothpy.timeout",

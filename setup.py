@@ -30,7 +30,7 @@ with open("README.md", "r") as f:
 setup (
        #setuptools options
        name = 'iothpy',
-       version = '1.2.7',
+       version = '1.3.0',
        author = 'Dario Mylonopoulos, Francesco Testa',
        author_email = 'dmylos@yahoo.it, francescotesta2002@hotmail.it',
        url = 'https://github.com/Tiestaa/iothpy',
@@ -39,7 +39,7 @@ setup (
        long_description_content_type="text/markdown",
        packages = ["iothpy"],
        classifiers = ["Operating System :: POSIX :: Linux"],
-       python_requires='>=3.12',
+       python_requires='>=3.6',
 
        #skbuild options
        cmake_args= [],
