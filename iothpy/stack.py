@@ -124,3 +124,16 @@ class Stack(_iothpy.StackBase):
                                 _intenum_converter(socktype, SocketKind),
                                 proto, canonname, sa))
             return addrlist
+
+    def getnameinfo(self, *args):
+        """Returns the host and port of sockaddr.
+
+        This method takes the same parameters as the builtin socket.getnameinfo().
+        """
+
+        res = _iothpy.StackBase.getnameinfo(self, *args)
+
+        if(isinstance(res[0], int)):
+            raise gaierror(res[1])
+
+        return res

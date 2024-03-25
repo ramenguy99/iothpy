@@ -42,6 +42,8 @@
 #include <errno.h>
 
 #define IS_PATH(str) (strchr(str, '/') != NULL)
+#define NI_MAXHOST 1025
+#define NI_MAXSERV 32
 
 static void 
 stack_dealloc(stack_object* self)
@@ -966,6 +968,99 @@ static PyObject* dns_getaddrinfo(stack_object* self, PyObject* args, PyObject* k
     return all;
 }
 
+PyDoc_STRVAR(dns_getnameinfo_doc, "getnameinfo(sockaddr, flags) --> (host, port)\n\
+\n\
+Get host and port for a sockaddr.);");
+
+static PyObject* dns_getnameinfo(PyObject* self, PyObject *args){
+
+    stack_object* s = (socket_object*) self;
+
+    PyObject * sockaddr = (PyObject *)NULL;
+    int flags;
+    const char *hostptr;
+    int port;
+    unsigned int flowinfo, scope_id;
+    int error;
+    char hbuf[NI_MAXHOST], pbuf[NI_MAXSERV];
+    struct addrinfo hints, *res = NULL;
+    PyObject *name, *ret;
+
+    flags = flowinfo = scope_id = 0;
+    if(!PyArg_ParseTuple(args,"Oi:getnameinfo", &sockaddr, &flags))
+        return NULL;
+    
+    if(!PyTuple_Check(sockaddr)){
+        PyErr_SetString(PyExc_TypeError, "getnameinfo() argument 1 must be a tuple");
+        return NULL;
+    }
+
+    if (!PyArg_ParseTuple(sockaddr, "si|II;getnameinfo(): illegal sockaddr argument",
+                          &hostptr, &port, &flowinfo, &scope_id))
+        return NULL;
+
+    if (flowinfo > 0xfffff) {
+        PyErr_SetString(PyExc_OverflowError, "getnameinfo(): flowinfo must be 0-1048575.");
+        return NULL;
+    }
+
+    PyOS_snprintf(pbuf, sizeof(pbuf), "%d", port);
+    memset(&hints, 0, sizeof(hints));
+    hints.ai_family = AF_UNSPEC;
+    hints.ai_socktype = SOCK_DGRAM; 
+    hints.ai_flags = AI_NUMERICHOST;
+
+    error = iothdns_getaddrinfo(s->stack_dns, hostptr, pbuf, &hints, &res);
+
+    if(error){
+        res = NULL;
+        return Py_BuildValue("is", error, iothdns_gai_strerror(error));
+    }
+
+    if(res->ai_next){
+        PyErr_SetString(PyExc_OSError, "sockaddr resolved to multiple addresses");
+        iothdns_freeaddrinfo(res);
+        return (PyObject*) NULL;
+    }
+
+    switch (res->ai_family){
+        case AF_INET:{
+            if (PyTuple_GET_SIZE(sockaddr) != 2) {
+                PyErr_SetString(PyExc_OSError, "IPv4 sockaddr must be 2 tuple");
+                iothdns_freeaddrinfo(res);
+                return (PyObject*) NULL;
+            }
+            break;
+        }
+
+        case AF_INET6: {
+            struct sockaddr_in6 *sin6;
+            sin6 = (struct sockaddr_in6 *)res->ai_addr;
+            sin6->sin6_flowinfo = htonl(flowinfo);
+            sin6->sin6_scope_id = scope_id;
+            break;
+        }
+    }
+
+    error = iothdns_getnameinfo(s->stack_dns, res->ai_addr, (socklen_t) res->ai_addrlen,
+                        hbuf, sizeof(hbuf), pbuf, sizeof(pbuf), flags );
+
+    if(error){
+        iothdns_freeaddrinfo(res);
+        return Py_BuildValue("is", error, iothdns_gai_strerror(error));
+    }
+
+    name = PyUnicode_FromString(hbuf);
+    if(name == NULL){
+        iothdns_freeaddrinfo(res);
+        return NULL;
+    }
+
+    ret = Py_BuildValue("Ns", name, pbuf);
+    iothdns_freeaddrinfo(res);
+    return ret;
+}
+
 
 static PyMethodDef stack_methods[] = {
     /* Listing network interfaces */
@@ -998,6 +1093,7 @@ static PyMethodDef stack_methods[] = {
 
     /* queries */
     {"getaddrinfo", (PyCFunctionWithKeywords)dns_getaddrinfo, METH_VARARGS | METH_KEYWORDS, dns_getaddrinfo_doc},
+    {"getnameinfo", (PyCFunction)dns_getnameinfo, METH_VARARGS, dns_getnameinfo_doc},
 
     {NULL, NULL} /* sentinel */
 };
