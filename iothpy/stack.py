@@ -50,6 +50,7 @@ To configure dns, you can use:
 
 Other methods:
     getaddrinfo
+    getnameinfo
     socket
 """
 
