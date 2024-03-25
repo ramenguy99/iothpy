@@ -31,9 +31,9 @@ setup (
        #setuptools options
        name = 'iothpy',
        version = '1.3.0',
-       author = 'Dario Mylonopoulos, Francesco Testa',
-       author_email = 'dmylos@yahoo.it, francescotesta2002@hotmail.it',
-       url = 'https://github.com/Tiestaa/iothpy',
+       author = 'Dario Mylonopoulos',
+       author_email = 'dmylos@yahoo.it',
+       url = 'https://github.com/ramenguy99/iothpy',
        description = 'Python library for internet of threads',
        long_description = long_description,
        long_description_content_type="text/markdown",
