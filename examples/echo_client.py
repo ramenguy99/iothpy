@@ -19,6 +19,9 @@ stack.linksetupdown(ifindex, 1)
 stack.ipaddr_add(iothpy.AF_INET, "10.0.0.2", 24, ifindex)
 stack.iproute_add(iothpy.AF_INET, "10.0.0.254")
 
+# To configure the stack, you can use the single function:
+# stack.ioth_config("ip=10.0.0.2/24, eth")
+
 # Create a tcp socket and connect to server
 sock = stack.socket(iothpy.AF_INET, iothpy.SOCK_STREAM)
 
@@ -49,4 +52,3 @@ while(True):
                 sock.send(message.encode())
             else:
                 break
-
