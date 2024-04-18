@@ -41,6 +41,8 @@
 #include <arpa/inet.h>
 #include <errno.h>
 
+#include <ioth.h>
+
 #define IS_PATH(str) (strchr(str, '/') != NULL)
 #define NI_MAXHOST 1025
 #define NI_MAXSERV 32
@@ -585,6 +587,7 @@ PyDoc_STRVAR(iplink_add_doc, "iplink_add(ifindex, type, data, ifname)\n\
 \n\
 This function adds a new link of type type,  named  ifname.  The\n\
 value of data depends on the type of link and can be optional. \n\
+Data is a list of tuple (tag, tag_data). \n\
 A default interface name is assigned if ifname is missing.  The  link  is\n\
 created with a given index when ifindex is positive.\n\
 \n\
@@ -597,8 +600,78 @@ stack_iplink_add(stack_object *self, PyObject *args){
     char* ifname = NULL;
     unsigned int ifindex;
     char* type;
-    char* data = NULL;
+    PyObject* data = NULL;
+    int nifd = - 1;
+    int newifindex;
+    struct nl_iplink_data* ifd = NULL;
 
+    if(!self->stack) 
+    {
+        PyErr_SetString(PyExc_Exception, "Uninitialized stack");
+        return NULL;
+    }
+
+    /* Parse arguments */
+    if(!PyArg_ParseTuple(args, "is|Os:iplink_add", &ifindex, &type, &data, &ifname)) {
+        return NULL;
+    }
+
+    if(PyList_Check(data)){
+        nifd = (int)PyList_Size(data);
+        ifd = (struct nl_iplink_data*) malloc(sizeof(struct nl_iplink_data) * nifd);
+
+        for(int i = 0; i < nifd; i++) {
+            PyObject* cur_tuple = PyList_GetItem(data, i);
+            if(!PyTuple_Check(cur_tuple)){
+                PyErr_SetString(PyExc_ValueError, "Data in list must be tuples");
+                return NULL;
+            }
+
+            PyObject* tag = PyTuple_GetItem(cur_tuple, 0);
+            PyObject* dataptr = PyTuple_GetItem(cur_tuple, 1);
+
+            ifd[i] = (struct nl_iplink_data) {(int) PyLong_AsLong(tag), sizeof(PyLong_AsVoidPtr(dataptr)) + 1, (PyLong_AsVoidPtr(dataptr))};
+        }
+
+    } else if(PyTuple_Check(data)){
+        nifd = 1;
+        ifd = (struct nl_iplink_data*) malloc(sizeof(struct nl_iplink_data) * nifd);
+
+        PyObject* tag = PyTuple_GetItem(data, 0);
+        PyObject* dataptr = PyTuple_GetItem(data, 1);
+
+        ifd[0] = (struct nl_iplink_data) {(int) PyLong_AsLong(tag), sizeof(PyLong_AsVoidPtr(dataptr)) + 1, (PyLong_AsVoidPtr(dataptr))};
+
+    } else {
+        PyErr_SetString(PyExc_ValueError, "Data must be list or tuple");
+        return NULL;
+    }
+
+    if((newifindex = ioth_iplink_add(self->stack, ifname, ifindex, type, ifd,  nifd)) < 0) {
+        PyErr_SetString(PyExc_Exception, "failed to add link");
+        return NULL;
+    }
+
+    return PyLong_FromLong(newifindex);
+}
+
+PyDoc_STRVAR(iplink_add_vde_doc, "iplink_add_vde(ifindex, vnl, ifname)\n\
+\n\
+This function adds a new link of type vde,  named  ifname.  The\n\
+vnl is the name of virtual network locator. \n\
+A default interface name is assigned if ifname is missing.  The  link  is\n\
+created with a given index when ifindex is positive.\n\
+\n\
+iplink_add can return the (positive)  ifindex  of  the  newly\n\
+created  link  when  the  argument ifindex is -1 and the stack supports\n\
+this feature.\n\
+It's a simplified version of iplink_add to use for vde vnl.");
+
+static PyObject*
+stack_iplink_add_vde(stack_object *self, PyObject *args){
+    char* ifname = NULL;
+    int ifindex;
+    char* vnl = NULL;
     int newifindex;
 
     if(!self->stack) 
@@ -608,11 +681,13 @@ stack_iplink_add(stack_object *self, PyObject *args){
     }
 
     /* Parse arguments */
-    if(!PyArg_ParseTuple(args, "is|ss:iplink_add", &ifindex, &type, &data, &ifname)) {
+    if(!PyArg_ParseTuple(args, "is|s:iplink_add_vde", &ifindex, &vnl, &ifname)) {
         return NULL;
     }
 
-     if((newifindex = ioth_iplink_add(self->stack, ifname, ifindex, type, data)) < 0) {
+    printf("vnl: %s, ifindex: %i\n", vnl, ifindex);
+
+    if((newifindex = ioth_iplink_add(self->stack, ifname, ifindex, "vde", nl_iplink_strdata(IFLA_VDE_VNL, vnl))) < 0) {
         PyErr_SetString(PyExc_Exception, "failed to add link");
         return NULL;
     }
@@ -1071,6 +1146,7 @@ static PyMethodDef stack_methods[] = {
     /* Network interface configuration */
     {"linksetupdown", (PyCFunction)stack_linksetupdown, METH_VARARGS, linksetupdown_doc},
     {"iplink_add", (PyCFunction)stack_iplink_add, METH_VARARGS, iplink_add_doc},
+    {"iplink_add_vde", (PyCFunction)stack_iplink_add_vde, METH_VARARGS, iplink_add_vde_doc},
     {"iplink_del", (PyCFunction)stack_iplink_del, METH_VARARGS | METH_KEYWORDS, iplink_del_doc},
 
     {"linkgetaddr", (PyCFunction)stack_linkgetaddr, METH_VARARGS, linkgetaddr_doc},

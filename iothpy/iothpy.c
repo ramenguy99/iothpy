@@ -43,6 +43,7 @@
 
 #include <ioth.h>
 
+
 PyDoc_STRVAR(iothpy_doc,
 "_iothpy c module\n\
 \n\
@@ -242,6 +243,5 @@ PyInit__iothpy(void)
     if (PyModule_AddObject(module, "MSocketBase",
                            (PyObject *)&socket_type) != 0)
         return NULL;
-
     return module;
 }

@@ -30,4 +30,7 @@ add_library(_iothpy MODULE iothpy/iothpy.c iothpy/iothpy_socket.c iothpy/iothpy_
 target_link_libraries(_iothpy -lioth -liothconf -liothdns)
 python_extension_module(_iothpy)
 
-install(TARGETS _iothpy LIBRARY DESTINATION iothpy)
+add_library(_const_linkadd MODULE iothpy/const_linkadd.c)
+python_extension_module(_const_linkadd)
+
+install(TARGETS _iothpy _const_linkadd LIBRARY DESTINATION iothpy)

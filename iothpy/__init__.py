@@ -65,8 +65,12 @@ For more information on stack configuration see help("iothpy.stack")
 # Import the Stack type
 from iothpy.stack import Stack
 
+# Import constants for ioth_linkadd
+from ._const_linkadd import *
+
 # Import functions from the c module
-from iothpy._iothpy import getdefaulttimeout, setdefaulttimeout, CMSG_LEN, CMSG_SPACE, close, timeout
+from ._iothpy import getdefaulttimeout, setdefaulttimeout, CMSG_LEN, CMSG_SPACE, close, timeout
+
 
 # Import the function to override the built-in socket module
 from iothpy.override import override_socket_module
