@@ -1,15 +1,7 @@
 import iothpy
 
-stack  = iothpy.Stack("stack=vdestack")
+stack  = iothpy.Stack("picox", "vxvde://234.0.0.1")
 
-#ifindex = stack.if_nametoindex("vde0") 
-
-#stack.linksetupdown(ifindex, True)
-
-#print(ifindex)
-
-ret = stack.iplink_add_vde(-1, "vxvde://234.0.0.1", "vde1")
+ret = stack.iplink_add_vde(-1, "vxvde://234.0.0.2", "vde1")
 
 print(f"return value: {ret}\n")
-
-IP.addr.show()

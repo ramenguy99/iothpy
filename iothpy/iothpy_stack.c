@@ -43,9 +43,12 @@
 
 #include <ioth.h>
 
+
 #define IS_PATH(str) (strchr(str, '/') != NULL)
 #define NI_MAXHOST 1025
 #define NI_MAXSERV 32
+
+static char* stackName = NULL;
 
 static void 
 stack_dealloc(stack_object* self)
@@ -138,6 +141,8 @@ stack_initobj(PyObject* self, PyObject* args, PyObject* kwargs)
         return -1;
     }
 
+    
+
     if(stack_dns_init(s, config_dns) < 0) {
         PyErr_SetFromErrno(PyExc_OSError);
         return -1;
@@ -146,6 +151,18 @@ stack_initobj(PyObject* self, PyObject* args, PyObject* kwargs)
     if(vdeurl == Py_None){
         /*stack interface in configuration string */
         s->stack = ioth_newstackc(stack_name);
+
+        if(!s->stack) {
+            PyErr_SetFromErrno(PyExc_OSError);
+            return -1;
+        }
+
+        //get stack name
+        char* stackString = strstr(stack_name, "stack=\0");
+        if(stackString){
+            strtok(stackString, "=");
+            stackName = strtok(NULL, "=");
+        }
     }
     else{
         /* check if vde url is a string or a list of strings */
@@ -184,6 +201,7 @@ stack_initobj(PyObject* self, PyObject* args, PyObject* kwargs)
 
         s->stack = ioth_newstackv(stack_name, urls);
         free(multi_url_buf);
+        stackName = stack_name;
     }
 
     if(!s->stack) {
@@ -191,7 +209,7 @@ stack_initobj(PyObject* self, PyObject* args, PyObject* kwargs)
         return -1;
     }
 
-
+    
 
     return 0;
 }
@@ -611,6 +629,11 @@ stack_iplink_add(stack_object *self, PyObject *args){
         return NULL;
     }
 
+    if(strcmp(stackName, "vdestack") == 0){
+        PyErr_SetString(PyExc_Exception, "Operation not supported by vdestack");
+        return NULL;
+    }
+
     /* Parse arguments */
     if(!PyArg_ParseTuple(args, "is|Os:iplink_add", &ifindex, &type, &data, &ifname)) {
         return NULL;
@@ -680,12 +703,15 @@ stack_iplink_add_vde(stack_object *self, PyObject *args){
         return NULL;
     }
 
+    if(strcmp(stackName, "vdestack") == 0){
+        PyErr_SetString(PyExc_Exception, "Operation not supported by vdestack");
+        return NULL;
+    }
+
     /* Parse arguments */
     if(!PyArg_ParseTuple(args, "is|s:iplink_add_vde", &ifindex, &vnl, &ifname)) {
         return NULL;
     }
-
-    printf("vnl: %s, ifindex: %i\n", vnl, ifindex);
 
     if((newifindex = ioth_iplink_add(self->stack, ifname, ifindex, "vde", nl_iplink_strdata(IFLA_VDE_VNL, vnl))) < 0) {
         PyErr_SetString(PyExc_Exception, "failed to add link");

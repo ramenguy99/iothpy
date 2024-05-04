@@ -30,7 +30,7 @@ with open("README.md", "r") as f:
 setup (
        #setuptools options
        name = 'iothpy',
-       version = '1.3.0',
+       version = '1.3.1',
        author = 'Dario Mylonopoulos',
        author_email = 'dmylos@yahoo.it',
        url = 'https://github.com/ramenguy99/iothpy',
