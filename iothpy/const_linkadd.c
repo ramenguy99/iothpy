@@ -28,6 +28,9 @@
 
 #include <nlinline+.h>
 #include <linux/if_link.h>
+#include <linux/version.h>
+
+#define IS_DEBIAN_UNSTABLE_KERNEL LINUX_VERSION_CODE >= KERNEL_VERSION(6,2,0)
 
 #define ADD_INT(name, value) \
     do { \
@@ -113,10 +116,12 @@ static const char* IFLA[] = {
 	"IFLA_TSO_MAX_SIZE",
 	"IFLA_TSO_MAX_SEGS",
 	"IFLA_ALLMULTI",		/* Allmulti count: > 0 means acts ALLMULTI */
+#if IS_DEBIAN_UNSTABLE_KERNEL
 	"IFLA_DEVLINK_PORT",
 	"IFLA_GSO_IPV4_MAX_SIZE",
 	"IFLA_GRO_IPV4_MAX_SIZE",
 	"IFLA_DPLL_PIN",
+#endif
 	"__IFLA_MAX"
 };
 static const char* IFLA_PROTO_DOWNREASON[] = {
@@ -142,7 +147,8 @@ static const char* IFLA_INET6[] = {
 	"IFLA_INET6_RA_MTU",	/* mtu carried in the RA message */
 	"__IFLA_INET6_MAX"
 };
-static const char* IFLA_INET6_GEN_MODE[] = {"IN6_ADDR_GEN_MODE_EUI64",
+static const char* IFLA_INET6_GEN_MODE[] = {
+	"IN6_ADDR_GEN_MODE_EUI64",
 	"IN6_ADDR_GEN_MODE_NONE", 
 	"IN6_ADDR_GEN_MODE_STABLE_PRIVACY",
 	"IN6_ADDR_GEN_MODE_RANDOM"
@@ -198,8 +204,10 @@ static const char* IFLA_BR[] = {
 	"IFLA_BR_VLAN_STATS_PER_PORT",
 	"IFLA_BR_MULTI_BOOLOPT",
 	"IFLA_BR_MCAST_QUERIER_STATE",
+#if IS_DEBIAN_UNSTABLE_KERNEL
 	"IFLA_BR_FDB_N_LEARNED",
 	"IFLA_BR_FDB_MAX_LEARNED",
+#endif
 	"__IFLA_BR_MAX",
 };
 
@@ -246,11 +254,13 @@ static const char* IFLA_BRPORT[] = {
 	"IFLA_BRPORT_MCAST_EHT_HOSTS_LIMIT",
 	"IFLA_BRPORT_MCAST_EHT_HOSTS_CNT",
 	"IFLA_BRPORT_LOCKED",
+#if IS_DEBIAN_UNSTABLE_KERNEL
 	"IFLA_BRPORT_MAB",
 	"IFLA_BRPORT_MCAST_N_GROUPS",
 	"IFLA_BRPORT_MCAST_MAX_GROUPS",
 	"IFLA_BRPORT_NEIGH_VLAN_SUPPRESS",
 	"IFLA_BRPORT_BACKUP_NHID",
+#endif
 	"__IFLA_BRPORT_MAX"
 };
 
@@ -291,7 +301,9 @@ static const char* IFLA_MACVLAN[] = {
 	"IFLA_MACVLAN_MACADDR_COUNT",
 	"IFLA_MACVLAN_BC_QUEUE_LEN",
 	"IFLA_MACVLAN_BC_QUEUE_LEN_USED",
+#if IS_DEBIAN_UNSTABLE_KERNEL
 	"IFLA_MACVLAN_BC_CUTOFF",
+#endif
 	"__IFLA_MACVLAN_MAX",
 };
 static const char* MACVLAN_MACADDR[] = {
@@ -357,10 +369,12 @@ static const char* IPVLAN_MODE[] = {
 	"IPVLAN_MODE_MAX"
 };
 
+#if IS_DEBIAN_UNSTABLE_KERNEL
 static const char* NETKIT_MODE[] = {
 	"NETKIT_L2",
 	"NETKIT_L3",
 };
+
 
 static const char* IFLA_NETKIT[] = {
 	"IFLA_NETKIT_UNSPEC",
@@ -371,6 +385,8 @@ static const char* IFLA_NETKIT[] = {
 	"IFLA_NETKIT_MODE",
 	"__IFLA_NETKIT_MAX",
 };
+
+#endif
 
 /* VXLAN section */
 static const char* VNIFILTER_ENTRY[] = {
@@ -435,8 +451,10 @@ static const char* IFLA_VXLAN[] = {
 	"IFLA_VXLAN_TTL_INHERIT",
 	"IFLA_VXLAN_DF",
 	"IFLA_VXLAN_VNIFILTER", /* only applicable with COLLECT_METADATA mode */
+#if IS_DEBIAN_UNSTABLE_KERNEL
 	"IFLA_VXLAN_LOCALBYPASS",
 	"IFLA_VXLAN_LABEL_POLICY", /* IPv6 flow label policy; ifla_vxlan_label_policy */
+#endif
 	"__IFLA_VXLAN_MAX"
 };
 
@@ -553,7 +571,9 @@ static const char* IFLA_BOND[] = {
 	"IFLA_BOND_AD_LACP_ACTIVE",
 	"IFLA_BOND_MISSED_MAX",
 	"IFLA_BOND_NS_IP6_TARGET",
+#if IS_DEBIAN_UNSTABLE_KERNEL
 	"IFLA_BOND_COUPLED_CONTROL",
+#endif
 	"__IFLA_BOND_MAX",
 };
 static const char* IFLA_BOND_ADINFO[] = {
@@ -923,9 +943,11 @@ PyMODINIT_FUNC PyInit__const_linkadd(void){
 	ADD_INT("NETKIT_PASS",NETKIT_PASS);
 	ADD_INT("NETKIT_DROP",NETKIT_DROP);
 	ADD_INT("NETKIT_REDIRECT",NETKIT_REDIRECT);
+#if IS_DEBIAN_UNSTABLE_KERNEL
 	ADD_ENUM(NETKIT_MODE, NETKIT_L3);
 	ADD_ENUM(IFLA_NETKIT, __IFLA_NETKIT_MAX);
 	ADD_INT("IFLA_NETKIT_MAX", IFLA_NETKIT_MAX);
+#endif
 
 	ADD_INT("TUNNEL_MSG_FLAG_STATS", TUNNEL_MSG_FLAG_STATS);
 	ADD_INT("TUNNEL_MSG_VALID_USER_FLAGS", TUNNEL_MSG_VALID_USER_FLAGS);
